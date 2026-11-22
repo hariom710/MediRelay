@@ -861,9 +861,24 @@ class TestQuotationValidation:
             'items': [{'prescription_item': rx.items.first().id,
                        'available': True, 'qty_offered': 10, 'unit_price': 5}],
         }, content_type='application/json')
-        # After fix: must be 400
-        # Before fix: may succeed
-        # assert r.status_code == 400  # uncomment after fix (e)
+        assert r.status_code == 400
+        assert 'pickup_fee' in str(r.json()).lower()
+
+    def test_excessive_pickup_fee_rejected(self, client, make_user, medicine):
+        doc = make_user('d16b@doc.com', 'doctor', registration_number='D16B')
+        pat = make_user('p22b@pat.com', 'patient')
+        pharm = make_user('ph12b@rx.com', 'pharmacy', pharmacy_name='P12B')
+        rx = _make_finalized_rx(doc, pat, medicine)
+        _, share = _make_share(rx)
+
+        _login(client, pharm, 'pharmacy')
+        r = client.post('/api/v1/quotations', {
+            'share_id': share.id,
+            'pickup_fee': 10000,
+            'items': [{'prescription_item': rx.items.first().id,
+                       'available': True, 'qty_offered': 10, 'unit_price': 5}],
+        }, content_type='application/json')
+        assert r.status_code == 400
 
     def test_zero_unit_price_for_available_item_rejected(
         self, client, make_user, medicine
@@ -880,5 +895,22 @@ class TestQuotationValidation:
             'items': [{'prescription_item': rx.items.first().id,
                        'available': True, 'qty_offered': 10, 'unit_price': 0}],
         }, content_type='application/json')
-        # After fix: must be 400
-        # assert r.status_code == 400  # uncomment after fix (e)
+        assert r.status_code == 400
+        assert 'unit_price' in str(r.json()).lower()
+
+    def test_non_numeric_unit_price_rejected(
+        self, client, make_user, medicine
+    ):
+        doc = make_user('d17b@doc.com', 'doctor', registration_number='D17B')
+        pat = make_user('p23b@pat.com', 'patient')
+        pharm = make_user('ph13b@rx.com', 'pharmacy', pharmacy_name='P13B')
+        rx = _make_finalized_rx(doc, pat, medicine)
+        _, share = _make_share(rx)
+
+        _login(client, pharm, 'pharmacy')
+        r = client.post('/api/v1/quotations', {
+            'share_id': share.id,
+            'items': [{'prescription_item': rx.items.first().id,
+                       'available': True, 'qty_offered': 10, 'unit_price': 'invalid'}],
+        }, content_type='application/json')
+        assert r.status_code == 400
