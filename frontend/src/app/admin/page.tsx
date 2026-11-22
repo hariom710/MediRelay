@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import PortalShell from "@/components/portal-shell";
 import {
@@ -37,11 +37,7 @@ export default function AdminPortal() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  useEffect(() => {
-    loadQueue();
-  }, []);
-
-  async function loadQueue() {
+  const loadQueue = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api<Queue>("/admin/verifications?status=pending");
@@ -51,7 +47,11 @@ export default function AdminPortal() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue]);
 
   async function decide(
     profileType: "doctor" | "pharmacy",

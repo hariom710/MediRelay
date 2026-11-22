@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import PortalShell from "@/components/portal-shell";
 import {
@@ -91,11 +91,23 @@ export default function PatientPrescriptions() {
   const [successMsg, setSuccessMsg] = useState("");
   const [shareToken, setShareToken] = useState("");
 
-  useEffect(() => {
-    loadPrescriptions();
+  const loadComparison = useCallback(async (rxId: number) => {
+    setLoadingCompare(true);
+    setComparison(null);
+    try {
+      const res = await api<ComparisonResult>("/price-comparisons", {
+        method: "POST",
+        body: JSON.stringify({ prescription_id: rxId }),
+      });
+      setComparison(res);
+    } catch (e) {
+      if (e instanceof Error) setError(e.message);
+    } finally {
+      setLoadingCompare(false);
+    }
   }, []);
 
-  async function loadPrescriptions() {
+  const loadPrescriptions = useCallback(async () => {
     try {
       const res = await api<Prescription[]>("/prescriptions");
       setPrescriptions(res);
@@ -106,13 +118,11 @@ export default function PatientPrescriptions() {
     } catch (e) {
       if (e instanceof Error) setError(e.message);
     }
-  }
+  }, [selectedRx, loadComparison]);
 
-  async function loadComparison(rxId: number) {
-    setLoadingCompare(true);
-    setComparison(null);
-    try {
-      const res = await api<ComparisonResult>("/price-comparisons", {
+  useEffect(() => {
+    loadPrescriptions();
+  }, [loadPrescriptions]);
         method: "POST",
         body: { prescription_id: rxId },
       });
