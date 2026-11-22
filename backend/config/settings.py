@@ -28,9 +28,6 @@ INSTALLED_APPS = [
     'quotations',
     'orders',
     'notifications',
-    'health_records',
-    'laboratories',
-    'ai_services',
 ]
 
 MIDDLEWARE = [

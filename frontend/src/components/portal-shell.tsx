@@ -30,9 +30,6 @@ const NAV: Record<
   patient: [
     { href: "/patient", label: "My Orders & Bills", icon: ShoppingBag },
     { href: "/patient/prescriptions", label: "Prescriptions & Quotes", icon: FileText },
-    { href: "/patient/health-vault", label: "Medical Vault & Family", icon: FolderHeart },
-    { href: "/patient/labs", label: "Diagnostic Labs", icon: FlaskConical },
-    { href: "/patient/ai-assistant", label: "AI Medical Assistant", icon: Sparkles },
   ],
   pharmacy: [
     { href: "/pharmacy", label: "Prescription Requests", icon: Building2 },

@@ -178,7 +178,7 @@ class VerificationDecisionView(APIView):
 
         target_status = allowed[decision]
         profile.verification_note = request.data.get('note', '')
-        profile.transition_to(target_status, actor=request.user, reason=f'Admin decision: {decision}', save=True,
+        profile.transition_to(target_status, actor=request.user, request=request, reason=f'Admin decision: {decision}', save=True,
                               update_fields=['verification_status', 'verification_note'])
         record(request.user, 'account.verify', profile_type, profile.id,
                {'decision': decision}, request)

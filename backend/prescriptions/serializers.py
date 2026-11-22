@@ -56,6 +56,7 @@ class PrescriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prescription
         fields = ['id', 'status', 'version', 'previous_version', 'consultation_date',
+                  'valid_until', 'is_expired',
                   'notes', 'revision_reason', 'signed_at', 'created_at', 'updated_at',
                   'patient', 'patient_name', 'doctor', 'doctor_name', 'items']
 

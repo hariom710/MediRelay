@@ -432,3 +432,207 @@ def test_expired_quotations_and_prescriptions_rejected(client, patient, pharmacy
 
     assert order_resp.status_code == 409
     assert order_resp.json()['code'] == 'prescription_expired'
+
+
+@pytest.mark.django_db
+def test_authenticated_transitions_always_record_audit_user(client, doctor, patient, medicine):
+    """Every authenticated state transition must record user != None in AuditLog."""
+    client.force_login(doctor)
+    session = client.session
+    session['active_role'] = 'doctor'
+    session.save()
+    r = client.post('/api/v1/prescriptions', {
+        'patient_id': patient.patient_profile.id,
+        'consultation_date': '2026-11-20',
+        'items': [{'medicine': medicine.id, 'morning': 1, 'duration_days': 5}]}, content_type='application/json')
+    assert r.status_code == 201
+    rx_id = r.json()['id']
+    client.post(f'/api/v1/prescriptions/{rx_id}/finalize',
+                {'items': [{'item_id': i['id'], 'confirmed_qty': i['calculated_qty']}
+                           for i in r.json()['items']]}, content_type='application/json')
+
+    log = AuditLog.objects.filter(object_id=str(rx_id), action="prescription.transition").first()
+    assert log is not None
+    assert log.user == doctor
+    assert log.user_id is not None
+
+
+@pytest.mark.django_db
+def test_cancel_fulfillment_multi_pharmacy_releases_only_target_and_expires_if_past_validity(
+    client, patient, pharmacy, doctor, make_user
+):
+    """Cancelling one fulfillment releases ONLY that pharmacy's quote, and marks expired if past valid_until."""
+    pharmacy.pharmacy_profile.verification_status = VerificationStatus.VERIFIED
+    pharmacy.pharmacy_profile.save()
+
+    pharmacy2 = make_user('rx2@example.com', 'pharmacy', pharmacy_name='Pharma Two', verification_status='verified')
+
+    med1 = Medicine.objects.create(generic_name="Med One", brand_name="Brand 1", pack_size=10)
+    med2 = Medicine.objects.create(generic_name="Med Two", brand_name="Brand 2", pack_size=10)
+
+    inv1 = InventoryItem.objects.create(pharmacy=pharmacy.pharmacy_profile, medicine=med1, selling_price=50)
+    MedicineBatch.objects.create(inventory_item=inv1, batch_number="B1", expiry_date=timezone.now().date() + timezone.timedelta(days=100), qty=50)
+
+    inv2 = InventoryItem.objects.create(pharmacy=pharmacy2.pharmacy_profile, medicine=med2, selling_price=60)
+    MedicineBatch.objects.create(inventory_item=inv2, batch_number="B2", expiry_date=timezone.now().date() + timezone.timedelta(days=100), qty=50)
+
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22", status=PrescriptionStatus.FINALIZED
+    )
+    pi1 = PrescriptionItem.objects.create(prescription=rx, medicine=med1, morning=1, duration_days=5, total_qty=5)
+    pi2 = PrescriptionItem.objects.create(prescription=rx, medicine=med2, morning=1, duration_days=5, total_qty=5)
+
+    quote1 = Quotation.objects.create(
+        prescription=rx, pharmacy=pharmacy.pharmacy_profile,
+        valid_until=timezone.now() + timezone.timedelta(days=2),
+        status=QuotationStatus.SUBMITTED
+    )
+    QuotationItem.objects.create(quotation=quote1, prescription_item=pi1, available=True, qty_offered=10, unit_price=5)
+
+    quote2 = Quotation.objects.create(
+        prescription=rx, pharmacy=pharmacy2.pharmacy_profile,
+        valid_until=timezone.now() + timezone.timedelta(days=2),
+        status=QuotationStatus.SUBMITTED
+    )
+    QuotationItem.objects.create(quotation=quote2, prescription_item=pi2, available=True, qty_offered=10, unit_price=6)
+
+    client.force_login(patient)
+    session = client.session
+    session['active_role'] = 'patient'
+    session.save()
+
+    # Place multi-pharmacy order
+    order_resp = client.post('/api/v1/orders', {
+        'prescription_id': rx.id,
+        'selection': [
+            {'prescription_item': pi1.id, 'pharmacy': pharmacy.pharmacy_profile.id},
+            {'prescription_item': pi2.id, 'pharmacy': pharmacy2.pharmacy_profile.id}
+        ]
+    }, content_type='application/json')
+    assert order_resp.status_code == 201
+
+    quote1.refresh_from_db()
+    quote2.refresh_from_db()
+    assert quote1.status == QuotationStatus.SELECTED
+    assert quote2.status == QuotationStatus.SELECTED
+
+    # Find fulfillment for pharmacy 1
+    order_id = order_resp.json()['id']
+    ful1 = next(f for f in order_resp.json()['fulfillments'] if f['pharmacy'] == pharmacy.pharmacy_profile.id)
+
+    # Cancel fulfillment 1
+    cancel_resp = client.post(f'/api/v1/orders/{order_id}/fulfillments/{ful1["id"]}/cancel')
+    assert cancel_resp.status_code == 200
+
+    quote1.refresh_from_db()
+    quote2.refresh_from_db()
+    # Pharmacy 1 quotation is reopened to SUBMITTED
+    assert quote1.status == QuotationStatus.SUBMITTED
+    # Pharmacy 2 quotation remains SELECTED!
+    assert quote2.status == QuotationStatus.SELECTED
+
+    # Now simulate quotation 1 having expired while order was placed
+    quote1.valid_until = timezone.now() - timezone.timedelta(hours=1)
+    quote1.status = QuotationStatus.SELECTED
+    quote1.save(update_fields=['valid_until', 'status'])
+
+    # Cancel fulfillment again when quotation expired
+    ful1_model = OrderFulfillment.objects.get(pk=ful1['id'])
+    ful1_model.status = FulfillmentStatus.PENDING
+    ful1_model.save(update_fields=['status'])
+
+    client.post(f'/api/v1/orders/{order_id}/fulfillments/{ful1["id"]}/cancel')
+    quote1.refresh_from_db()
+    # It must transition to EXPIRED, not reopen
+    assert quote1.status == QuotationStatus.EXPIRED
+
+
+@pytest.mark.django_db
+def test_revising_quotation_blocked_while_fulfillment_active(client, patient, pharmacy, doctor):
+    """Revising a quotation is blocked with 409 while order fulfillment is actively pending."""
+    pharmacy.pharmacy_profile.verification_status = VerificationStatus.VERIFIED
+    pharmacy.pharmacy_profile.save()
+
+    med = Medicine.objects.create(generic_name="Paracetamol", brand_name="Crocin 500", pack_size=10)
+    inv = InventoryItem.objects.create(pharmacy=pharmacy.pharmacy_profile, medicine=med, selling_price=50)
+    MedicineBatch.objects.create(inventory_item=inv, batch_number="B1", expiry_date=timezone.now().date() + timezone.timedelta(days=100), qty=50)
+
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22", status=PrescriptionStatus.FINALIZED
+    )
+    pi = PrescriptionItem.objects.create(prescription=rx, medicine=med, morning=1, duration_days=5, total_qty=5)
+
+    quote = Quotation.objects.create(
+        prescription=rx, pharmacy=pharmacy.pharmacy_profile,
+        valid_until=timezone.now() + timezone.timedelta(days=2),
+        status=QuotationStatus.SUBMITTED
+    )
+    QuotationItem.objects.create(quotation=quote, prescription_item=pi, available=True, qty_offered=10, unit_price=5)
+
+    client.force_login(patient)
+    session = client.session
+    session['active_role'] = 'patient'
+    session.save()
+
+    # Place order
+    client.post('/api/v1/orders', {
+        'prescription_id': rx.id,
+        'selection': [{'prescription_item': pi.id, 'pharmacy': pharmacy.pharmacy_profile.id}]
+    }, content_type='application/json')
+
+    # Pharmacy attempts to revise while fulfillment is pending
+    client.force_login(pharmacy)
+    session = client.session
+    session['active_role'] = 'pharmacy'
+    session.save()
+
+    rev_resp = client.post(f'/api/v1/quotations/{quote.id}/revise', {
+        'items': [{'prescription_item': pi.id, 'available': True, 'qty_offered': 10, 'unit_price': 8}]
+    }, content_type='application/json')
+
+    assert rev_resp.status_code == 409
+    assert rev_resp.json()['code'] == 'active_fulfillment_pending'
+
+
+@pytest.mark.django_db
+def test_expire_stale_management_command_and_read_isolation(client, patient, pharmacy, doctor):
+    """Read view computes expiry without writing; expire_stale command writes EXPIRED status."""
+    from django.core.management import call_command
+
+    past_date = timezone.now().date() - timezone.timedelta(days=40)
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date=past_date, valid_until=past_date + timezone.timedelta(days=10),
+        status=PrescriptionStatus.FINALIZED
+    )
+
+    quote = Quotation.objects.create(
+        prescription=rx, pharmacy=pharmacy.pharmacy_profile,
+        valid_until=timezone.now() - timezone.timedelta(days=5),
+        status=QuotationStatus.SUBMITTED
+    )
+
+    client.force_login(patient)
+    session = client.session
+    session['active_role'] = 'patient'
+    session.save()
+
+    # 1. Reading rx via GET computes is_expired=True, but DOES NOT mutate database status
+    resp = client.get(f'/api/v1/prescriptions/{rx.id}')
+    assert resp.status_code == 200
+    assert resp.json()['is_expired'] is True
+
+    rx.refresh_from_db()
+    assert rx.status == PrescriptionStatus.FINALIZED  # Database status unchanged on GET!
+
+    # 2. Run expire_stale management command
+    call_command('expire_stale')
+
+    rx.refresh_from_db()
+    quote.refresh_from_db()
+
+    # Database status is now transitioned to EXPIRED
+    assert rx.status == PrescriptionStatus.EXPIRED
+    assert quote.status == QuotationStatus.EXPIRED

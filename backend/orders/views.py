@@ -86,8 +86,6 @@ class OrderCreateView(APIView):
                                       quotation__valid_until__lt=now)
                               .first())
                 if expired_qi:
-                    if expired_qi.quotation.status in (QuotationStatus.SUBMITTED, QuotationStatus.VIEWED):
-                        expired_qi.quotation.transition_to(QuotationStatus.EXPIRED, actor=request.user, reason='Expired validity', save=True)
                     return Response(
                         {'detail': f'Quotation for item {pi_id} at pharmacy {pid} has expired.',
                          'code': 'quotation_expired'}, status=409)
@@ -145,7 +143,7 @@ class OrderCreateView(APIView):
                     fulfillment.save(update_fields=['subtotal'])
                     order_total += subtotal + quote.pickup_fee
                     # quotations used are now locked in
-                    quote.transition_to(QuotationStatus.SELECTED, save=True)
+                    quote.transition_to(QuotationStatus.SELECTED, actor=request.user, request=request, reason='Order placed', save=True)
 
                 order.total = order_total
                 order.save(update_fields=['total'])
@@ -207,7 +205,7 @@ class FulfillView(APIView):
                              'code': 'not_pending'}, status=409)
 
         with transaction.atomic():
-            fulfillment.transition_to(FulfillmentStatus.FULFILLED, save=True)
+            fulfillment.transition_to(FulfillmentStatus.FULFILLED, actor=request.user, request=request, reason='Order fulfilled', save=True)
             invoice = Invoice.objects.create(
                 fulfillment=fulfillment,
                 invoice_number=f'INV-{timezone.now():%Y%m%d}-'
@@ -215,7 +213,7 @@ class FulfillView(APIView):
             order = fulfillment.order
             statuses = set(order.fulfillments.values_list('status', flat=True))
             if statuses == {FulfillmentStatus.FULFILLED}:
-                order.transition_to(OrderStatus.COMPLETED, save=True)
+                order.transition_to(OrderStatus.COMPLETED, actor=request.user, request=request, reason='All fulfillments fulfilled', save=True)
 
         record(request.user, 'order.fulfill', 'order', order.id,
                {'fulfillment_id': fulfillment.id, 'invoice': invoice.invoice_number},
@@ -269,11 +267,11 @@ class CancelFulfillmentView(APIView):
                     restock([(target, oi.qty)], 'order_fulfillment',
                             fulfillment.id, user)
 
-            fulfillment.transition_to(FulfillmentStatus.CANCELLED, actor=user, reason='Fulfillment cancelled', save=True)
+            fulfillment.transition_to(FulfillmentStatus.CANCELLED, actor=user, request=request, reason='Fulfillment cancelled', save=True)
             order = fulfillment.order
             statuses = set(order.fulfillments.values_list('status', flat=True))
             if statuses == {FulfillmentStatus.CANCELLED}:
-                order.transition_to(OrderStatus.CANCELLED, actor=user, reason='All fulfillments cancelled', save=True)
+                order.transition_to(OrderStatus.CANCELLED, actor=user, request=request, reason='All fulfillments cancelled', save=True)
 
             # Re-open quotation so the patient can order again from that quotation
             from quotations.models import Quotation, QuotationStatus
@@ -282,7 +280,10 @@ class CancelFulfillmentView(APIView):
                 pharmacy=fulfillment.pharmacy
             ).first()
             if quote and quote.status == QuotationStatus.SELECTED:
-                quote.transition_to(QuotationStatus.SUBMITTED, actor=user, reason='Order cancelled; quotation re-opened', save=True)
+                if quote.valid_until < timezone.now():
+                    quote.transition_to(QuotationStatus.EXPIRED, actor=user, request=request, reason='Order cancelled but quotation expired', save=True)
+                else:
+                    quote.transition_to(QuotationStatus.SUBMITTED, actor=user, request=request, reason='Order cancelled; quotation re-opened', save=True)
 
         record(user, 'order.fulfillment_cancel', 'order', order.id,
                {'fulfillment_id': fulfillment.id}, request)
@@ -351,7 +352,7 @@ class PaymentStatusView(APIView):
                                           fulfillment__pharmacy=request.user.pharmacy_profile)
         except Invoice.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-        invoice.transition_to(status_val, actor=request.user, reason=f'Manual update to {status_val}', save=True)
+        invoice.transition_to(status_val, actor=request.user, request=request, reason=f'Manual update to {status_val}', save=True)
         record(request.user, 'invoice.payment_status', 'invoice', invoice.id,
                {'status': status_val}, request)
         return Response({'id': invoice.id, 'payment_status': invoice.payment_status})

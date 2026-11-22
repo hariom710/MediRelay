@@ -27,7 +27,7 @@ class Quotation(StateMachineMixin, models.Model):
         QuotationStatus.DRAFT: [QuotationStatus.SUBMITTED],
         QuotationStatus.SUBMITTED: [QuotationStatus.VIEWED, QuotationStatus.SELECTED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED, QuotationStatus.DRAFT],
         QuotationStatus.VIEWED: [QuotationStatus.SELECTED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED, QuotationStatus.DRAFT],
-        QuotationStatus.SELECTED: [QuotationStatus.SUBMITTED, QuotationStatus.DRAFT],
+        QuotationStatus.SELECTED: [QuotationStatus.SUBMITTED, QuotationStatus.EXPIRED, QuotationStatus.DRAFT],
         QuotationStatus.REJECTED: [QuotationStatus.DRAFT],
         QuotationStatus.EXPIRED: [QuotationStatus.DRAFT],
     }

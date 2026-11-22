@@ -41,6 +41,7 @@ class Prescription(StateMachineMixin, models.Model):
                                          on_delete=models.SET_NULL,
                                          related_name='next_versions')
     consultation_date = models.DateField()
+    valid_until = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True)
     revision_reason = models.CharField(max_length=300, blank=True)
     signed_at = models.DateTimeField(null=True, blank=True)
@@ -50,16 +51,33 @@ class Prescription(StateMachineMixin, models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def save(self, *args, **kwargs):
+        if not self.valid_until and self.consultation_date:
+            from datetime import date, timedelta
+            c_date = self.consultation_date
+            if isinstance(c_date, str):
+                c_date = date.fromisoformat(c_date)
+            self.valid_until = c_date + timedelta(days=30)
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f'RX-{self.pk} v{self.version} ({self.status})'
 
     @property
     def is_expired(self):
         from django.utils import timezone
+        from datetime import date, timedelta
         if self.status == PrescriptionStatus.EXPIRED:
             return True
-        ref_date = self.signed_at.date() if self.signed_at else self.consultation_date
-        return (timezone.now().date() - ref_date).days > 30
+        now_date = timezone.now().date()
+        c_date = self.consultation_date
+        if isinstance(c_date, str):
+            c_date = date.fromisoformat(c_date)
+        v_date = self.valid_until
+        if isinstance(v_date, str):
+            v_date = date.fromisoformat(v_date)
+        target = v_date or (c_date + timedelta(days=30))
+        return now_date > target
 
 
 class PrescriptionItem(models.Model):

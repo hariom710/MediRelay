@@ -160,7 +160,7 @@ class QuotationSubmitView(APIView):
         if quote.is_expired:
             quote.valid_until = timezone.now() + timezone.timedelta(days=2)
         quote.submitted_at = timezone.now()
-        quote.transition_to(QuotationStatus.SUBMITTED, save=True,
+        quote.transition_to(QuotationStatus.SUBMITTED, actor=request.user, request=request, reason='Pharmacy submitted quotation', save=True,
                             update_fields=['status', 'submitted_at', 'valid_until'])
         record(request.user, 'quotation.submit', 'quotation', quote.id, {}, request)
         notify(quote.prescription.patient.user, 'quotation_submitted',
@@ -196,7 +196,7 @@ class QuotationMarkViewedView(APIView):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
         if quote.status == QuotationStatus.SUBMITTED:
-            quote.transition_to(QuotationStatus.VIEWED, actor=request.user, reason='Patient viewed quotation', save=True)
+            quote.transition_to(QuotationStatus.VIEWED, actor=request.user, request=request, reason='Patient viewed quotation', save=True)
         return Response(QuotationSerializer(quote).data)
 
 
@@ -224,7 +224,7 @@ class QuotationReviseView(APIView):
 
         items_data = request.data.get('items')
         with transaction.atomic():
-            quote.transition_to(QuotationStatus.DRAFT, actor=request.user, reason='Revision initiated', save=True)
+            quote.transition_to(QuotationStatus.DRAFT, actor=request.user, request=request, reason='Revision initiated', save=True)
             quote.revision += 1
             if items_data:
                 quote.items.all().delete()
@@ -239,7 +239,7 @@ class QuotationReviseView(APIView):
 
             if request.data.get('submit', True):
                 quote.submitted_at = timezone.now()
-                quote.transition_to(QuotationStatus.SUBMITTED, actor=request.user, reason=f'Submitted revision {quote.revision}', save=True)
+                quote.transition_to(QuotationStatus.SUBMITTED, actor=request.user, request=request, reason=f'Submitted revision {quote.revision}', save=True)
 
         record(request.user, 'quotation.revise', 'quotation', quote.id, {'revision': quote.revision}, request)
         return Response(QuotationSerializer(quote).data)

@@ -62,10 +62,27 @@ class PrescriptionListCreateView(APIView):
             return Response({'detail': 'consultation_date is required.',
                              'code': 'validation_error'}, status=400)
 
+        valid_until = request.data.get('valid_until')
+        if valid_until:
+            from datetime import date
+            try:
+                v_date = date.fromisoformat(str(valid_until))
+                c_date = date.fromisoformat(str(consult_date))
+                if v_date < c_date:
+                    return Response({'detail': 'valid_until cannot be earlier than consultation_date.',
+                                     'code': 'invalid_valid_until'}, status=400)
+                if (v_date - c_date).days > 180:
+                    return Response({'detail': 'valid_until cannot exceed 180 days from consultation_date.',
+                                     'code': 'invalid_valid_until'}, status=400)
+            except ValueError:
+                return Response({'detail': 'valid_until must be YYYY-MM-DD.',
+                                 'code': 'invalid_valid_until'}, status=400)
+
         with transaction.atomic():
             rx = Prescription.objects.create(
                 patient=patient, doctor=request.user.doctor_profile,
                 consultation_date=consult_date,
+                valid_until=valid_until or None,
                 notes=request.data.get('notes', ''))
             for i, item in enumerate(ser.validated_data):
                 med_id = item.pop('medicine')
@@ -88,9 +105,6 @@ class PrescriptionDetailView(APIView):
 
         if not _can_view(request.user, rx):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-
-        if rx.is_expired and rx.status == PrescriptionStatus.FINALIZED:
-            rx.transition_to(PrescriptionStatus.EXPIRED, actor=request.user, reason='Expired prescription', save=True)
 
         if request.user.active_role == Role.DOCTOR:
             ser = PrescriptionSerializer(rx)
@@ -172,7 +186,7 @@ class PrescriptionFinalizeView(APIView):
                          'code': 'quantity_mismatch'}, status=400)
 
             rx.signed_at = timezone.now()
-            rx.transition_to(PrescriptionStatus.FINALIZED, save=True, update_fields=['status', 'signed_at'])
+            rx.transition_to(PrescriptionStatus.FINALIZED, actor=request.user, request=request, reason='Doctor finalized prescription', save=True, update_fields=['status', 'signed_at'])
 
         record(request.user, 'prescription.finalize', 'prescription', rx.id, {}, request)
         notify(rx.patient.user, 'prescription_ready',
@@ -209,7 +223,7 @@ class PrescriptionReviseView(APIView):
                 item.pk = None
                 item.prescription = new
                 item.save()
-            old.transition_to(PrescriptionStatus.REVISED, save=True, update_fields=['status'])
+            old.transition_to(PrescriptionStatus.REVISED, actor=request.user, request=request, reason=f'Revised to v{new.version}', save=True, update_fields=['status'])
 
         record(request.user, 'prescription.revise', 'prescription', new.id,
                {'from': old.id, 'reason': reason}, request)
@@ -237,7 +251,7 @@ class PrescriptionCancelView(APIView):
             return Response({'detail': 'Only finalized prescriptions can be cancelled.',
                              'code': 'not_finalized'}, status=409)
         rx.revision_reason = reason
-        rx.transition_to(PrescriptionStatus.CANCELLED, save=True, update_fields=['status', 'revision_reason'])
+        rx.transition_to(PrescriptionStatus.CANCELLED, actor=request.user, request=request, reason=reason, save=True, update_fields=['status', 'revision_reason'])
         record(request.user, 'prescription.cancel', 'prescription', rx.id,
                {'reason': reason}, request)
         notify(rx.patient.user, 'prescription_cancelled',
@@ -369,8 +383,6 @@ class ShareTokenView(APIView):
 
         rx = share.prescription
         if rx.is_expired or rx.status == PrescriptionStatus.EXPIRED:
-            if rx.status == PrescriptionStatus.FINALIZED:
-                rx.transition_to(PrescriptionStatus.EXPIRED, actor=user, reason='Expired prescription', save=True)
             return Response({'detail': 'This prescription has expired.', 'code': 'prescription_expired'}, status=410)
 
         # log every access (owner or pharmacy)

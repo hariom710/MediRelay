@@ -374,8 +374,27 @@ python -m pytest -q
 | **Gate 3** | Concurrent overselling & expired batch sales under FEFO | `tests/test_gates.py` | `test_gate_concurrent_orders_cannot_oversell_fefo` |
 | **Gate 4** | Tampering or loss of history during prescription revision | `tests/test_gates.py` | `test_gate_prescription_revision_preserves_immutable_version` |
 | **Gate 5** | Database rollback caused by auxiliary notification failures | `tests/test_gates.py` | `test_gate_failed_notification_does_not_rollback_prescription` |
-| **State Gates** | Invalid state machine lifecycle transitions | `tests/test_state_machines.py` | `test_prescription_state_machine_invalid_transition` |
+| **State Gates** | Invalid state machine lifecycle transitions | `tests/test_state_machines.py` | `test_prescription_state_machine` |
 | **Catalog Gates** | Unintended automatic medicine brand substitutions | `tests/test_engine.py` | `test_substitution_flagged_and_rejected_from_comparison` |
+
+### Running Concurrency & Race Tests on PostgreSQL
+
+In local development, automated concurrency tests (`test_concurrent_transition_conditional_update`, `test_threaded_concurrent_transitions`, and `test_gate3_concurrent_orders_cannot_oversell_fefo`) execute on SQLite using atomic conditional `UPDATE` validation. While SQLite enforces table-level serial writes, PostgreSQL provides true row-level locks via `select_for_update()` and multiversion concurrency control (MVCC).
+
+To run the complete test suite against PostgreSQL:
+1. Ensure PostgreSQL is running and create a test database:
+   ```sql
+   CREATE DATABASE medirelay_test;
+   ```
+2. Set the `DATABASE_URL` environment variable:
+   ```powershell
+   $env:DATABASE_URL="postgres://postgres:password@localhost:5432/medirelay_test"
+   ```
+3. Execute pytest:
+   ```powershell
+   cd backend
+   python -m pytest tests/test_state_machines.py -v
+   ```
 
 ---
 

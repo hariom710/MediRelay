@@ -12,8 +12,5 @@ urlpatterns = [
         path('', include('quotations.urls')),
         path('', include('orders.urls')),
         path('', include('notifications.urls')),
-        path('', include('health_records.urls')),
-        path('', include('laboratories.urls')),
-        path('', include('ai_services.urls')),
     ])),
 ]
