@@ -1,0 +1,140 @@
+from django.db import transaction
+from django.utils import timezone
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from accounts.permissions import IsVerifiedPharmacy
+from audit.services import record
+
+from .models import InventoryItem, MedicineBatch, StockMovement
+from .serializers import BatchSerializer, InventoryItemSerializer, StockMovementSerializer
+
+
+class InventoryListCreateView(APIView):
+    permission_classes = [IsVerifiedPharmacy]
+
+    def get(self, request):
+        qs = request.user.pharmacy_profile.inventory_items.select_related(
+            'medicine').prefetch_related('batches')
+        return Response(InventoryItemSerializer(qs, many=True).data)
+
+    def post(self, request):
+        medicine_id = request.data.get('medicine')
+        price = request.data.get('selling_price')
+        if not medicine_id or price is None:
+            return Response({'detail': 'medicine and selling_price required.',
+                             'code': 'validation_error'}, status=400)
+        try:
+            item = InventoryItem.objects.create(
+                pharmacy=request.user.pharmacy_profile,
+                medicine_id=medicine_id, selling_price=price)
+        except Exception:
+            return Response({'detail': 'This medicine is already in your inventory, '
+                                       'or medicine id is invalid.',
+                             'code': 'duplicate_or_invalid'}, status=400)
+        record(request.user, 'inventory.add', 'inventory_item', item.id, {}, request)
+        return Response(InventoryItemSerializer(item).data, status=201)
+
+
+class InventoryDetailView(APIView):
+    permission_classes = [IsVerifiedPharmacy]
+
+    def get(self, request, pk):
+        item = self._owned(request, pk)
+        if item is None:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        return Response(InventoryItemSerializer(item).data)
+
+    def delete(self, request, pk):
+        item = self._owned(request, pk)
+        if item is None:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if StockMovement.objects.filter(batch__inventory_item=item).exists():
+            return Response({'detail': 'Item has stock history and cannot be deleted. '
+                                       'Set selling_price to 0 or write off stock instead.',
+                             'code': 'has_history'}, status=409)
+        item.delete()
+        return Response({'detail': 'deleted'})
+
+    def _owned(self, request, pk):
+        try:
+            return request.user.pharmacy_profile.inventory_items.get(pk=pk)
+        except InventoryItem.DoesNotExist:
+            return None
+
+
+class BatchCreateView(APIView):
+    permission_classes = [IsVerifiedPharmacy]
+
+    def post(self, request, item_id):
+        try:
+            item = request.user.pharmacy_profile.inventory_items.get(pk=item_id)
+        except InventoryItem.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+
+        fields = {k: request.data.get(k) for k in
+                  ('batch_number', 'expiry_date', 'qty', 'mrp', 'purchase_price')}
+        if not fields['batch_number'] or not fields['expiry_date']:
+            return Response({'detail': 'batch_number and expiry_date required.',
+                             'code': 'validation_error'}, status=400)
+        try:
+            qty = int(fields['qty'] or 0)
+        except (TypeError, ValueError):
+            return Response({'detail': 'qty must be an integer.',
+                             'code': 'validation_error'}, status=400)
+        if qty <= 0:
+            return Response({'detail': 'qty must be positive.', 'code': 'validation_error'},
+                            status=400)
+
+        expiry = timezone.datetime.strptime(fields['expiry_date'], '%Y-%m-%d').date()
+        if expiry < timezone.now().date():
+            return Response({'detail': 'Expired stock cannot be added.',
+                             'code': 'expired_stock'}, status=400)
+
+        with transaction.atomic():
+            batch, created = MedicineBatch.objects.update_or_create(
+                inventory_item=item, batch_number=fields['batch_number'],
+                defaults={'expiry_date': expiry, 'mrp': fields['mrp'] or 0,
+                          'purchase_price': fields['purchase_price'] or 0})
+            if not created:
+                batch.qty += qty
+                batch.save(update_fields=['qty'])
+            else:
+                batch.qty = qty
+                batch.save(update_fields=['qty'])
+            StockMovement.objects.create(
+                batch=batch, movement_type='in', quantity=qty,
+                reason='stock entry', ref_type='manual', ref_id='',
+                created_by=request.user)
+
+        record(request.user, 'inventory.batch_add', 'batch', batch.id,
+               {'qty': qty}, request)
+        return Response(BatchSerializer(batch).data, status=201)
+
+
+class ExpiryAlertView(APIView):
+    """Low stock + expiry alerts for the pharmacy dashboard."""
+
+    permission_classes = [IsVerifiedPharmacy]
+
+    def get(self, request):
+        profile = request.user.pharmacy_profile
+        today = timezone.now().date()
+        soon = today + timezone.timedelta(days=90)
+        items = profile.inventory_items.select_related('medicine').prefetch_related('batches')
+
+        low_stock, expiring, expired = [], [], []
+        for item in items:
+            if item.available_qty == 0:
+                low_stock.append({'id': item.id, 'medicine': item.medicine.display_name,
+                                  'qty': 0})
+            for b in item.batches.all():
+                row = {'batch_id': b.id, 'batch_number': b.batch_number,
+                       'medicine': item.medicine.display_name,
+                       'expiry_date': b.expiry_date.isoformat(), 'qty': b.qty}
+                if b.expiry_date < today:
+                    expired.append(row)
+                elif b.expiry_date <= soon:
+                    expiring.append(row)
+        return Response({'low_stock': low_stock, 'expiring_soon': expiring,
+                         'expired': expired})
