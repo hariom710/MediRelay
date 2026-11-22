@@ -269,8 +269,9 @@ class PrescriptionPDFView(APIView):
         if not _can_view(request.user, rx):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
-        if rx.is_expired and rx.status == PrescriptionStatus.FINALIZED:
-            rx.transition_to(PrescriptionStatus.EXPIRED, actor=request.user, reason='Expired prescription', save=True)
+        if rx.is_expired:
+            return Response({'detail': 'This prescription has expired.',
+                             'code': 'prescription_expired'}, status=410)
         return prescription_pdf(rx)
 
 

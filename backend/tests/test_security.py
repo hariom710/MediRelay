@@ -771,13 +771,12 @@ def test_prescription_pdf_get_does_not_mutate_status(
 
     original_status = rx.status
     _login(client, doc, 'doctor')
-    client.get(f'/api/v1/prescriptions/{rx.id}/pdf')
+    resp = client.get(f'/api/v1/prescriptions/{rx.id}/pdf')
+    assert resp.status_code == 410
 
     rx.refresh_from_db()
-    # After fix: status must not change on GET.
-    # Before fix: it may change to EXPIRED.
-    # Document the current behavior:
-    # assert rx.status == original_status  # uncomment after fix (b)
+    # Status must NOT change on GET (expiry is handled by expire_stale command only)
+    assert rx.status == original_status
 
 
 # ---------------------------------------------------------------------------
