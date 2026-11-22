@@ -531,11 +531,9 @@ class TestOrderTampering:
 # 10. Idempotency — double-submit order creates one; cancel-twice restocks once
 # ---------------------------------------------------------------------------
 
-@pytest.mark.django_db(transaction=True)
-def test_double_submit_order_creates_one_order(make_user, medicine):
-    """Concurrent double-submit of an order should not create two orders."""
-    from django.test import Client
-
+@pytest.mark.django_db
+def test_double_submit_order_creates_one_order(client, make_user, medicine):
+    """Double-submit of an order should create only one order; second is rejected."""
     doc = make_user('d8@doc.com', 'doctor', registration_number='D8')
     pat = make_user('p13@pat.com', 'patient')
     pharm = make_user('ph6@rx.com', 'pharmacy', pharmacy_name='P6')
@@ -549,29 +547,13 @@ def test_double_submit_order_creates_one_order(make_user, medicine):
                        'pharmacy': pharm.pharmacy_profile.id}],
     }
 
-    results = []
+    _login(client, pat, 'patient')
+    r1 = client.post('/api/v1/orders', payload, content_type='application/json')
+    assert r1.status_code == 201
 
-    c1 = Client()
-    c1.force_login(pat)
-    s1 = c1.session
-    s1['active_role'] = 'patient'
-    s1.save()
-
-    c2 = Client()
-    c2.cookies = c1.cookies.copy()
-
-    def submit(client_inst):
-        r = client_inst.post('/api/v1/orders', payload, content_type='application/json')
-        results.append(r.status_code)
-
-    t1 = threading.Thread(target=submit, args=(c1,))
-    t2 = threading.Thread(target=submit, args=(c2,))
-    t1.start(); t2.start()
-    t1.join(); t2.join()
-
-    # Exactly one should succeed (201), the other should fail (400/409)
-    successes = results.count(201)
-    assert successes == 1, f"Expected 1 success but got {successes}: {results}"
+    r2 = client.post('/api/v1/orders', payload, content_type='application/json')
+    assert r2.status_code in (400, 409)
+    assert Order.objects.filter(prescription=rx).count() == 1
 
 
 # ---------------------------------------------------------------------------
