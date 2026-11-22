@@ -125,7 +125,24 @@ CSRF_TRUSTED_ORIGINS = [
 # Upload limits
 DATA_UPLOAD_MAX_MEMORY_SIZE = 1 * 1024 * 1024  # 1 MB
 
-NUM_PROXIES = 1
+# Proxy configuration: number of trusted reverse proxies in front of Django.
+# In production, Next.js dev server or production reverse proxy (Nginx/Cloudflare)
+# sends X-Forwarded-For. NUM_PROXIES=1 selects the client IP behind that proxy.
+NUM_PROXIES = int(os.environ.get('DJANGO_NUM_PROXIES', 1))
+
+# Enable django-admin only if DEBUG is True or DJANGO_ENABLE_ADMIN is explicitly enabled
+ENABLE_DJANGO_ADMIN = os.environ.get('DJANGO_ENABLE_ADMIN', 'False').lower() in ('true', '1', 'yes')
+
+# Cache Backend Configuration:
+# LocMemCache is per-process and used by default in single-worker development.
+# In production with multiple WSGI workers (Gunicorn/uWSGI), configure a shared
+# cache backend such as Redis or Memcached so throttling state is shared across workers.
+CACHES = {
+    'default': {
+        'BACKEND': os.environ.get('DJANGO_CACHE_BACKEND', 'django.core.cache.backends.locmem.LocMemCache'),
+        'LOCATION': os.environ.get('DJANGO_CACHE_LOCATION', 'medirelay-throttle-cache'),
+    }
+}
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -140,6 +157,7 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'config.exceptions.api_exception_handler',
     'DEFAULT_PAGINATION_CLASS': 'config.pagination.MediRelayPagination',
     'PAGE_SIZE': 50,
+    'NUM_PROXIES': NUM_PROXIES,
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.ScopedRateThrottle',
     ],

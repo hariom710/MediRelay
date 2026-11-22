@@ -12,7 +12,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.3-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Python](https://img.shields.io/badge/Python-3.12%20%7C%203.13-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Database](https://img.shields.io/badge/Database-SQLite%20(dev)%20%2F%20PostgreSQL%20(prod)-4169E1?logo=postgresql&logoColor=white)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-53%20passed-brightgreen?logo=pytest&logoColor=white)](#testing--verification)
+[![Tests](https://img.shields.io/badge/tests-135%20passed-brightgreen?logo=pytest&logoColor=white)](#testing--verification)
 [![License](https://img.shields.io/badge/license-Proprietary%20%2F%20MIT-blue)](#license)
 
 [Features](#features) · [Tech stack](#tech-stack) · [Architecture](#architecture) · [Data flow & state machines](#data-flow--state-machines) · [Installation & setup](#installation--setup) · [Usage walkthrough](#usage-walkthrough) · [Security & privacy](#security-compliance--privacy) · [Testing & verification](#testing--verification) · [Limitations & known gaps](#limitations--known-gaps) · [Roadmap](#roadmap)
@@ -254,14 +254,13 @@ pip install -r requirements.txt
 # Run database migrations
 python manage.py migrate
 
-# Seed administrative superuser & roles
-python manage.py createsuperuser
+# Seed administrative user & roles in development (requires --email and --password)
+python manage.py seed_admin --email admin@example.com --password AdminPassword123!
 ```
 
-Assign the `admin` role to your superuser via the Django shell:
-```powershell
-python manage.py shell -c "from accounts.models import User, Role; u=User.objects.get(email='admin@example.com'); r,_=Role.objects.get_or_create(name='admin'); u.roles.add(r); u.active_role='admin'; u.save()"
-```
+### Environment Variables (.env)
+- **Zero-config local development:** When `DJANGO_DEBUG=True` (default), all settings use safe development defaults. A new developer can run migrations and `runserver` immediately without setting any environment variables.
+- **Production settings:** When `DJANGO_DEBUG=False`, `DJANGO_SECRET_KEY` is strictly required and fails fast if omitted. See `backend/.env.example` for all production environment variables (`DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DJANGO_NUM_PROXIES`, `DJANGO_ENABLE_ADMIN`, `DJANGO_CACHE_BACKEND`).
 
 Start the backend development server:
 ```powershell

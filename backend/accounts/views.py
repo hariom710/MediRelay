@@ -70,13 +70,39 @@ class LoginView(APIView):
         from django.contrib.auth import authenticate
         user = authenticate(request, email=email, password=password)
         if user is None:
-            # Audit log failed login attempt
-            record(None, 'user.login_failed', 'user', 0, {'email': email[:100]}, request)
+            # Audit log failed login attempt without storing raw email
+            import hashlib
+            email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()[:16]
+            parts = email.split('@')
+            masked = f"{parts[0][:2]}***@{parts[1]}" if len(parts) == 2 and len(parts[0]) >= 2 else "***"
+            record(None, 'user.login_failed', 'user', 0, {
+                'email_hash': email_hash,
+                'email_masked': masked,
+            }, request)
+
+            # Progressive delay on consecutive failed logins for this client IP/email
+            from django.core.cache import cache
+            ident = request.META.get('REMOTE_ADDR', '')
+            fail_key = f'fail_delay_{email_hash}_{ident}'
+            consec_fails = cache.get(fail_key, 0) + 1
+            cache.set(fail_key, consec_fails, timeout=300)
+            if consec_fails >= 3:
+                import time
+                delay = min(0.2 * (2 ** (consec_fails - 3)), 1.5)
+                time.sleep(delay)
+
             return Response({'detail': 'Invalid email or password.', 'code': 'invalid_credentials'},
                             status=400)
         if not user.is_active:
             return Response({'detail': 'This account is disabled.', 'code': 'account_disabled'},
                             status=403)
+        # Clear consecutive failure delay on successful authentication
+        from django.core.cache import cache
+        import hashlib
+        email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()[:16]
+        ident = request.META.get('REMOTE_ADDR', '')
+        cache.delete(f'fail_delay_{email_hash}_{ident}')
+
         login(request, user)
         if not user.active_role:
             user.active_role = user.role_names[0] if user.role_names else ''
@@ -104,6 +130,8 @@ class SwitchRoleView(APIView):
         if role not in request.user.role_names:
             return Response({'detail': 'You do not hold that role.', 'code': 'role_not_held'},
                             status=403)
+        # Fix (i): Cycle session key to prevent session fixation across role/privilege changes
+        request.session.cycle_key()
         request.user.active_role = role
         request.user.save(update_fields=['active_role'])
         return Response(UserSerializer(request.user).data)

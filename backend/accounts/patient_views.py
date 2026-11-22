@@ -78,3 +78,25 @@ class PatientDetailView(APIView):
         data = PatientProfileSerializer(p).data
         data['name'] = p.user.get_full_name() or p.user.email
         return Response(data)
+
+    def delete(self, request, pk):
+        try:
+            p = PatientProfile.objects.get(pk=pk)
+        except PatientProfile.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        allowed = (p.created_by_id == request.user.id or
+                   p.prescriptions.filter(doctor=request.user.doctor_profile).exists())
+        if not allowed:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if p.prescriptions.exists():
+            return Response({'detail': 'Patient has prescription history and cannot be deleted.',
+                             'code': 'patient_has_prescriptions'}, status=409)
+        if hasattr(p, 'orders') and p.orders.exists():
+            return Response({'detail': 'Patient has order history and cannot be deleted.',
+                             'code': 'patient_has_orders'}, status=409)
+        user = p.user
+        record(request.user, 'patient.delete', 'patient', p.id, {}, request)
+        p.delete()
+        if user and user.email.startswith('patient-') and user.email.endswith('@medirelay.local'):
+            user.delete()
+        return Response({'detail': 'deleted'})

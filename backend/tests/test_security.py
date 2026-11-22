@@ -591,6 +591,17 @@ class TestAuditLogAppendOnly:
         with pytest.raises(Exception):
             AuditLog.objects.filter(action='test.update').update(action='tampered')
 
+    def test_user_deletion_does_not_cascade_delete_audit_logs(self, doctor):
+        """Deleting a user must nullify audit_log.user (on_delete=SET_NULL), NOT delete audit rows."""
+        log = AuditLog.objects.create(
+            user=doctor, role='doctor', action='test.user_action',
+            object_type='test', object_id='5')
+        doctor_id = doctor.id
+        doctor.delete()
+        assert AuditLog.objects.filter(id=log.id).exists()
+        log.refresh_from_db()
+        assert log.user is None
+
 
 # ---------------------------------------------------------------------------
 # 12. Error responses — no stack trace / SQL / file path with DEBUG=False
@@ -914,3 +925,202 @@ class TestQuotationValidation:
                        'available': True, 'qty_offered': 10, 'unit_price': 'invalid'}],
         }, content_type='application/json')
         assert r.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 20. Advanced Throttling: IP separation, X-Forwarded-For & capped audit logs
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestAdvancedThrottling:
+    def test_attacker_ip_throttle_does_not_block_victim_from_different_ip(self, client, patient):
+        """10 bad logins for victim@x.com from IP A must NOT block real user from IP B."""
+        # Attacker at IP A attempts 10 bad logins for patient.email
+        for _ in range(10):
+            client.post('/api/v1/auth/login', {
+                'email': patient.email,
+                'password': 'badpassword'
+            }, content_type='application/json', REMOTE_ADDR='198.51.100.1')
+
+        # Real user logs in with valid credentials from IP B
+        resp = client.post('/api/v1/auth/login', {
+            'email': patient.email,
+            'password': 'Testpass123!'
+        }, content_type='application/json', REMOTE_ADDR='198.51.100.2')
+
+        assert resp.status_code == 200
+        assert resp.json()['email'] == patient.email
+
+    def test_client_ip_parsed_with_num_proxies_and_x_forwarded_for(self, client, patient):
+        """When behind a trusted proxy, X-Forwarded-For is parsed to identify client IP."""
+        # 5 failed requests from client IP 203.0.113.195 behind proxy 10.0.0.1
+        for _ in range(5):
+            client.post('/api/v1/auth/login', {
+                'email': patient.email,
+                'password': 'badpassword'
+            }, content_type='application/json',
+            HTTP_X_FORWARDED_FOR='203.0.113.195')
+
+        # 6th request from same client IP should be throttled (429)
+        resp = client.post('/api/v1/auth/login', {
+            'email': patient.email,
+            'password': 'badpassword'
+        }, content_type='application/json',
+        HTTP_X_FORWARDED_FOR='203.0.113.195')
+        assert resp.status_code == 429
+
+        # Request from a different client IP behind proxy should NOT be throttled
+        resp2 = client.post('/api/v1/auth/login', {
+            'email': patient.email,
+            'password': 'Testpass123!'
+        }, content_type='application/json',
+        HTTP_X_FORWARDED_FOR='203.0.113.196')
+        assert resp2.status_code == 200
+
+    def test_100_failed_logins_capped_by_throttle_do_not_flood_audit_log(self, client, patient):
+        """100 failed login attempts must not create 100 audit rows; throttled attempts are rejected early."""
+        initial_count = AuditLog.objects.filter(action='user.login_failed').count()
+        for _ in range(100):
+            client.post('/api/v1/auth/login', {
+                'email': patient.email,
+                'password': 'wrong'
+            }, content_type='application/json', REMOTE_ADDR='198.51.100.99')
+
+        final_count = AuditLog.objects.filter(action='user.login_failed').count()
+        # Rate limit is 5/min, so at most 5 audit rows are recorded, far less than 100
+        assert (final_count - initial_count) <= 5
+
+        # Confirm raw email is not stored in metadata
+        last_log = AuditLog.objects.filter(action='user.login_failed').first()
+        assert last_log is not None
+        assert 'email_hash' in last_log.metadata
+        assert last_log.metadata.get('email') != patient.email
+
+
+# ---------------------------------------------------------------------------
+# 21. Admin lockdown & seed_admin production guard
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestAdminLockdown:
+    def test_django_admin_not_accessible_when_debug_false_and_admin_disabled(self, client, settings):
+        settings.DEBUG = False
+        settings.ENABLE_DJANGO_ADMIN = False
+        from django.urls import clear_url_caches
+        import importlib
+        from config import urls
+        importlib.reload(urls)
+        clear_url_caches()
+
+        r = client.get('/django-admin/')
+        assert r.status_code == 404
+
+        # Restore
+        settings.DEBUG = True
+        importlib.reload(urls)
+        clear_url_caches()
+
+    def test_seed_admin_refuses_when_debug_false(self, settings):
+        settings.DEBUG = False
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with pytest.raises(CommandError) as exc_info:
+            call_command('seed_admin', email='testadmin@example.com', password='AdminPass123!')
+        assert 'disabled in production' in str(exc_info.value)
+        settings.DEBUG = True
+
+    def test_seed_admin_requires_email(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        import sys
+        with pytest.raises((CommandError, SystemExit)):
+            call_command('seed_admin')
+
+
+# ---------------------------------------------------------------------------
+# 22. Delete protection: Inventory, Patient, and Medicine
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestDeleteProtection:
+    def test_inventory_delete_blocked_when_in_active_quotation(self, client, make_user, medicine):
+        doc = make_user('d_del@doc.com', 'doctor', registration_number='DDEL')
+        pat = make_user('p_del@pat.com', 'patient')
+        pharm = make_user('ph_del@rx.com', 'pharmacy', pharmacy_name='DelPharm')
+        rx = _make_finalized_rx(doc, pat, medicine)
+        _, share = _make_share(rx)
+
+        inv_item = InventoryItem.objects.create(
+            pharmacy=pharm.pharmacy_profile,
+            medicine=medicine,
+            selling_price=100
+        )
+        _login(client, pharm, 'pharmacy')
+        # Create quotation for this item
+        client.post('/api/v1/quotations', {
+            'share_id': share.id,
+            'items': [{'prescription_item': rx.items.first().id,
+                       'available': True, 'qty_offered': 10, 'unit_price': 50}],
+        }, content_type='application/json')
+
+        # Attempt to delete inventory item
+        r = client.delete(f'/api/v1/pharmacy/inventory/{inv_item.id}')
+        assert r.status_code == 409
+        assert 'active quotation' in r.json().get('detail', '').lower()
+
+    def test_patient_delete_blocked_when_prescriptions_exist(self, client, make_user, medicine):
+        doc = make_user('d_pdel@doc.com', 'doctor', registration_number='DPDEL')
+        pat = make_user('p_pdel@pat.com', 'patient')
+        _make_finalized_rx(doc, pat, medicine)
+
+        _login(client, doc, 'doctor')
+        r = client.delete(f'/api/v1/patients/{pat.patient_profile.id}')
+        assert r.status_code == 409
+        assert 'prescription history' in r.json().get('detail', '').lower()
+
+    def test_medicine_delete_blocked_when_referenced_in_prescription(self, client, make_user, medicine):
+        admin = make_user('admin_del@medirelay.local', 'admin')
+        admin.is_staff = True
+        admin.save()
+        doc = make_user('d_mdel@doc.com', 'doctor', registration_number='DMDEL')
+        pat = make_user('p_mdel@pat.com', 'patient')
+        _make_finalized_rx(doc, pat, medicine)
+
+        _login(client, admin, 'admin')
+        r = client.delete(f'/api/v1/medicines/{medicine.id}')
+        assert r.status_code == 409
+        assert 'referenced' in r.json().get('detail', '').lower()
+
+
+# ---------------------------------------------------------------------------
+# 23. Session fixation: session key rotated on role switch
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestSessionFixation:
+    def test_switch_role_cycles_session_key(self, client, make_user):
+        """SwitchRoleView must call request.session.cycle_key() to rotate session key."""
+        user = make_user('dual@user.com', 'doctor', registration_number='DUAL1')
+        patient_role, _ = Role.objects.get_or_create(name=Role.PATIENT)
+        user.roles.add(patient_role)
+        PatientProfile.objects.create(user=user)
+
+        # Login
+        r_login = client.post('/api/v1/auth/login', {
+            'email': 'dual@user.com',
+            'password': 'Testpass123!'
+        }, content_type='application/json')
+        assert r_login.status_code == 200
+        initial_key = client.session.session_key
+        assert initial_key is not None
+
+        # Switch role to patient
+        r_switch = client.post('/api/v1/auth/switch-role', {
+            'role': 'patient'
+        }, content_type='application/json')
+        assert r_switch.status_code == 200
+
+        # Session key must have rotated
+        new_key = client.session.session_key
+        assert new_key is not None
+        assert new_key != initial_key

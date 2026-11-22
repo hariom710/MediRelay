@@ -9,6 +9,9 @@ class _AppendOnlyQuerySet(models.QuerySet):
     """Prevent bulk-update and bulk-delete on AuditLog rows."""
 
     def update(self, **kwargs):
+        # Allow Django's cascade collector to set user=None when a user is deleted (on_delete=SET_NULL)
+        if set(kwargs.keys()).issubset({'user', 'user_id'}) and all(v is None for v in kwargs.values()):
+            return super().update(**kwargs)
         raise PermissionError('AuditLog rows are immutable. update() is blocked.')
 
     def delete(self):
