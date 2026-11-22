@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import PortalShell from "@/components/portal-shell";
 import {
@@ -40,18 +40,18 @@ export default function PatientOrdersPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadOrders();
-  }, []);
-
-  async function loadOrders() {
+  const loadOrders = useCallback(async () => {
     try {
       const res = await api<Order[]>("/orders/list");
       setOrders(res);
     } catch (e) {
       if (e instanceof Error) setError(e.message);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    loadOrders();
+  }, [loadOrders]);
 
   function getStatusBadge(status: string) {
     switch (status) {

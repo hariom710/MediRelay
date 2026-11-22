@@ -40,17 +40,22 @@ class LoginThrottle(SimpleRateThrottle):
 
 
 class LoginEmailThrottle(SimpleRateThrottle):
-    """Throttle login requests per normalized email."""
+    """Throttle login requests per (email, client IP).
+
+    Prevents an attacker targeting victim@x.com from a hostile IP from
+    locking out the real user logging in from their legitimate IP.
+    """
     scope = 'login_email'
 
     def get_cache_key(self, request, view):
         email = (request.data.get('email') or '').lower().strip()
         if not email:
             return None  # fall back to IP throttle only
-        email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()[:32]
+        email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()[:16]
+        ident = self.get_ident(request)
         return self.cache_format % {
             'scope': self.scope,
-            'ident': f'email_{email_hash}',
+            'ident': f'{email_hash}_{ident}',
         }
 
 

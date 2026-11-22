@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -53,6 +54,22 @@ class InventoryDetailView(APIView):
             return Response({'detail': 'Item has stock history and cannot be deleted. '
                                        'Set selling_price to 0 or write off stock instead.',
                              'code': 'has_history'}, status=409)
+        from quotations.models import QuotationItem, QuotationStatus
+        from orders.models import OrderItem, FulfillmentStatus
+        if QuotationItem.objects.filter(
+            quotation__pharmacy=item.pharmacy,
+            quotation__status__in=[QuotationStatus.DRAFT, QuotationStatus.SUBMITTED, QuotationStatus.SELECTED]
+        ).filter(Q(prescription_item__medicine=item.medicine) | Q(offered_medicine=item.medicine)).exists():
+            return Response({'detail': 'Item is referenced in active quotations and cannot be deleted.',
+                             'code': 'referenced_in_quotation'}, status=409)
+        if OrderItem.objects.filter(
+            fulfillment__pharmacy=item.pharmacy,
+            fulfillment__status=FulfillmentStatus.PENDING,
+            medicine=item.medicine
+        ).exists():
+            return Response({'detail': 'Item is referenced in pending orders and cannot be deleted.',
+                             'code': 'referenced_in_order'}, status=409)
+        record(request.user, 'inventory.delete', 'inventory_item', item.id, {}, request)
         item.delete()
         return Response({'detail': 'deleted'})
 

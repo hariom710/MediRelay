@@ -82,15 +82,8 @@ export default function DoctorPortal() {
   // Prescription creation modal/studio state
   const [isCreating, setIsCreating] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<number | "">("");
-  const [consultDate, setConsultDate] = useState("");
+  const [consultDate, setConsultDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<PrescriptionItemInput[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchingMed, setIsSearchingMed] = useState(false);
-
-  useEffect(() => {
-    setConsultDate(new Date().toISOString().slice(0, 10));
-  }, []);
 
   // New patient registration state
   const [isAddingPatient, setIsAddingPatient] = useState(false);

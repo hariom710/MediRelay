@@ -31,6 +31,33 @@ class MedicineDetailView(APIView):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         return Response(MedicineSerializer(med).data)
 
+    def delete(self, request, pk):
+        if not (request.user and request.user.is_authenticated and request.user.active_role == 'admin'):
+            return Response({'detail': 'Admin role required.', 'code': 'forbidden'}, status=403)
+        try:
+            med = Medicine.objects.get(pk=pk)
+        except Medicine.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+
+        from prescriptions.models import PrescriptionItem
+        from inventory.models import InventoryItem
+        from quotations.models import QuotationItem
+        from orders.models import OrderItem
+
+        is_referenced = (
+            PrescriptionItem.objects.filter(medicine=med).exists() or
+            InventoryItem.objects.filter(medicine=med).exists() or
+            QuotationItem.objects.filter(Q(prescription_item__medicine=med) | Q(offered_medicine=med)).exists() or
+            OrderItem.objects.filter(medicine=med).exists()
+        )
+        if is_referenced:
+            return Response({'detail': 'Medicine is referenced in prescriptions, inventory, quotations, or orders and cannot be deleted. Deactivate instead.',
+                             'code': 'medicine_referenced'}, status=409)
+
+        record(request.user, 'medicine.delete', 'medicine', med.id, {'name': med.display_name}, request)
+        med.delete()
+        return Response({'detail': 'deleted'})
+
 
 class MedicineCreateView(APIView):
     permission_classes = [IsAdminRole]

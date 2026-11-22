@@ -3,6 +3,12 @@ import pytest
 from accounts.models import Role, User
 
 
+@pytest.fixture(autouse=True)
+def clear_cache():
+    from django.core.cache import cache
+    cache.clear()
+
+
 @pytest.fixture
 def make_user(db):
     def _make(email, role, active=None, **profile_kwargs):
