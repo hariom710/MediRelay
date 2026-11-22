@@ -178,13 +178,8 @@ class VerificationDecisionView(APIView):
 
         target_status = allowed[decision]
         profile.verification_note = request.data.get('note', '')
-        try:
-            profile.transition_to(target_status, save=True,
-                                  update_fields=['verification_status', 'verification_note'])
-        except Exception:
-            return Response(
-                {'detail': f'Cannot transition verification status from {profile.verification_status} to {target_status}.',
-                 'code': 'invalid_transition'}, status=400)
+        profile.transition_to(target_status, actor=request.user, reason=f'Admin decision: {decision}', save=True,
+                              update_fields=['verification_status', 'verification_note'])
         record(request.user, 'account.verify', profile_type, profile.id,
                {'decision': decision}, request)
         return Response({'id': profile.id, 'verification_status': profile.verification_status})

@@ -37,6 +37,12 @@ class OrderCreateView(APIView):
             rx = Prescription.objects.get(pk=rx_id, patient=request.user.patient_profile)
         except Prescription.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if rx.is_expired or rx.status == PrescriptionStatus.EXPIRED:
+            if rx.status == PrescriptionStatus.FINALIZED:
+                rx.transition_to(PrescriptionStatus.EXPIRED, actor=request.user, reason='Expired prescription', save=True)
+            return Response(
+                {'detail': 'This prescription has expired and cannot be ordered.',
+                 'code': 'prescription_expired'}, status=409)
         if rx.status != PrescriptionStatus.FINALIZED:
             return Response({'detail': 'Only finalized prescriptions can be ordered.',
                              'code': 'not_finalized'}, status=409)
@@ -73,6 +79,18 @@ class OrderCreateView(APIView):
                           available=True)
                   .first())
             if qi is None:
+                expired_qi = (QuotationItem.objects
+                              .select_related('quotation')
+                              .filter(prescription_item_id=pi_id,
+                                      quotation__pharmacy_id=pid,
+                                      quotation__valid_until__lt=now)
+                              .first())
+                if expired_qi:
+                    if expired_qi.quotation.status in (QuotationStatus.SUBMITTED, QuotationStatus.VIEWED):
+                        expired_qi.quotation.transition_to(QuotationStatus.EXPIRED, actor=request.user, reason='Expired validity', save=True)
+                    return Response(
+                        {'detail': f'Quotation for item {pi_id} at pharmacy {pid} has expired.',
+                         'code': 'quotation_expired'}, status=409)
                 return Response(
                     {'detail': f'No valid quotation for item {pi_id} at pharmacy {pid}.',
                      'code': 'invalid_quotation'}, status=400)
@@ -251,11 +269,20 @@ class CancelFulfillmentView(APIView):
                     restock([(target, oi.qty)], 'order_fulfillment',
                             fulfillment.id, user)
 
-            fulfillment.transition_to(FulfillmentStatus.CANCELLED, save=True)
+            fulfillment.transition_to(FulfillmentStatus.CANCELLED, actor=user, reason='Fulfillment cancelled', save=True)
             order = fulfillment.order
             statuses = set(order.fulfillments.values_list('status', flat=True))
             if statuses == {FulfillmentStatus.CANCELLED}:
-                order.transition_to(OrderStatus.CANCELLED, save=True)
+                order.transition_to(OrderStatus.CANCELLED, actor=user, reason='All fulfillments cancelled', save=True)
+
+            # Re-open quotation so the patient can order again from that quotation
+            from quotations.models import Quotation, QuotationStatus
+            quote = Quotation.objects.filter(
+                prescription=fulfillment.order.prescription,
+                pharmacy=fulfillment.pharmacy
+            ).first()
+            if quote and quote.status == QuotationStatus.SELECTED:
+                quote.transition_to(QuotationStatus.SUBMITTED, actor=user, reason='Order cancelled; quotation re-opened', save=True)
 
         record(user, 'order.fulfillment_cancel', 'order', order.id,
                {'fulfillment_id': fulfillment.id}, request)
@@ -316,17 +343,15 @@ class PaymentStatusView(APIView):
 
     def post(self, request, pk):
         status_val = request.data.get('payment_status')
-        if status_val not in ('pending', 'paid'):
-            return Response({'detail': 'payment_status must be pending|paid.',
+        if status_val not in ('pending', 'paid', 'failed', 'refunded'):
+            return Response({'detail': 'payment_status must be pending|paid|failed|refunded.',
                              'code': 'invalid_status'}, status=400)
         try:
             invoice = Invoice.objects.get(pk=pk,
                                           fulfillment__pharmacy=request.user.pharmacy_profile)
         except Invoice.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-        try:
-            invoice.transition_to(status_val, save=True)
-        except Exception:
-            return Response({'detail': f'Cannot transition invoice payment to {status_val}.',
-                             'code': 'invalid_transition'}, status=400)
+        invoice.transition_to(status_val, actor=request.user, reason=f'Manual update to {status_val}', save=True)
+        record(request.user, 'invoice.payment_status', 'invoice', invoice.id,
+               {'status': status_val}, request)
         return Response({'id': invoice.id, 'payment_status': invoice.payment_status})

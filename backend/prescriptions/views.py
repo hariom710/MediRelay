@@ -89,6 +89,9 @@ class PrescriptionDetailView(APIView):
         if not _can_view(request.user, rx):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
+        if rx.is_expired and rx.status == PrescriptionStatus.FINALIZED:
+            rx.transition_to(PrescriptionStatus.EXPIRED, actor=request.user, reason='Expired prescription', save=True)
+
         if request.user.active_role == Role.DOCTOR:
             ser = PrescriptionSerializer(rx)
         else:
@@ -251,6 +254,9 @@ class PrescriptionPDFView(APIView):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         if not _can_view(request.user, rx):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+
+        if rx.is_expired and rx.status == PrescriptionStatus.FINALIZED:
+            rx.transition_to(PrescriptionStatus.EXPIRED, actor=request.user, reason='Expired prescription', save=True)
         return prescription_pdf(rx)
 
 
@@ -360,6 +366,12 @@ class ShareTokenView(APIView):
             return Response({'detail': 'This link was revoked.', 'code': 'revoked'}, status=410)
         if not share.is_active:
             return Response({'detail': 'This link has expired.', 'code': 'expired'}, status=410)
+
+        rx = share.prescription
+        if rx.is_expired or rx.status == PrescriptionStatus.EXPIRED:
+            if rx.status == PrescriptionStatus.FINALIZED:
+                rx.transition_to(PrescriptionStatus.EXPIRED, actor=user, reason='Expired prescription', save=True)
+            return Response({'detail': 'This prescription has expired.', 'code': 'prescription_expired'}, status=410)
 
         # log every access (owner or pharmacy)
         PrescriptionAccessLog.objects.create(

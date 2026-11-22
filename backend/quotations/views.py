@@ -170,7 +170,7 @@ class QuotationSubmitView(APIView):
 
 
 class PrescriptionQuotationsView(APIView):
-    """Patient view: all quotations for their prescription. Marks them viewed."""
+    """Patient view: all quotations for their prescription (pure read, idempotent)."""
 
     permission_classes = [IsPatient]
 
@@ -181,14 +181,68 @@ class PrescriptionQuotationsView(APIView):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
         quotes = list(rx.quotations.exclude(status=QuotationStatus.DRAFT))
-        now = timezone.now()
-        for q in quotes:
-            if q.valid_until < now and q.status in (QuotationStatus.SUBMITTED,
-                                                    QuotationStatus.VIEWED):
-                q.transition_to(QuotationStatus.EXPIRED, save=True)
-            elif q.status == QuotationStatus.SUBMITTED:
-                q.transition_to(QuotationStatus.VIEWED, save=True)
         return Response(QuotationSerializer(quotes, many=True).data)
+
+
+class QuotationMarkViewedView(APIView):
+    """Explicit POST endpoint to mark a quotation as viewed."""
+
+    permission_classes = [IsPatient]
+
+    def post(self, request, pk):
+        try:
+            quote = Quotation.objects.get(pk=pk, prescription__patient=request.user.patient_profile)
+        except Quotation.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+
+        if quote.status == QuotationStatus.SUBMITTED:
+            quote.transition_to(QuotationStatus.VIEWED, actor=request.user, reason='Patient viewed quotation', save=True)
+        return Response(QuotationSerializer(quote).data)
+
+
+class QuotationReviseView(APIView):
+    """Allows pharmacy to revise a quotation after submission or selection."""
+
+    permission_classes = [IsVerifiedPharmacy]
+
+    def post(self, request, pk):
+        try:
+            quote = Quotation.objects.get(pk=pk, pharmacy=request.user.pharmacy_profile)
+        except Quotation.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+
+        from orders.models import OrderFulfillment, FulfillmentStatus
+        if OrderFulfillment.objects.filter(
+            order__prescription=quote.prescription,
+            pharmacy=quote.pharmacy,
+            status=FulfillmentStatus.PENDING
+        ).exists():
+            return Response({
+                'detail': 'Cannot revise quotation while order fulfillment is actively pending. Cancel the order first.',
+                'code': 'active_fulfillment_pending'
+            }, status=409)
+
+        items_data = request.data.get('items')
+        with transaction.atomic():
+            quote.transition_to(QuotationStatus.DRAFT, actor=request.user, reason='Revision initiated', save=True)
+            quote.revision += 1
+            if items_data:
+                quote.items.all().delete()
+                total = _save_items(quote, items_data, quote.prescription)
+                quote.total = total
+            if 'pickup_fee' in request.data:
+                quote.pickup_fee = request.data['pickup_fee']
+            if 'valid_days' in request.data:
+                days = max(1, min(int(request.data['valid_days']), 14))
+                quote.valid_until = timezone.now() + timezone.timedelta(days=days)
+            quote.save(update_fields=['revision', 'total', 'pickup_fee', 'valid_until', 'updated_at'])
+
+            if request.data.get('submit', True):
+                quote.submitted_at = timezone.now()
+                quote.transition_to(QuotationStatus.SUBMITTED, actor=request.user, reason=f'Submitted revision {quote.revision}', save=True)
+
+        record(request.user, 'quotation.revise', 'quotation', quote.id, {'revision': quote.revision}, request)
+        return Response(QuotationSerializer(quote).data)
 
 
 class PriceComparisonView(APIView):

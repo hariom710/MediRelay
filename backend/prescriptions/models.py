@@ -53,6 +53,14 @@ class Prescription(StateMachineMixin, models.Model):
     def __str__(self):
         return f'RX-{self.pk} v{self.version} ({self.status})'
 
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+        if self.status == PrescriptionStatus.EXPIRED:
+            return True
+        ref_date = self.signed_at.date() if self.signed_at else self.consultation_date
+        return (timezone.now().date() - ref_date).days > 30
+
 
 class PrescriptionItem(models.Model):
     """One medicine line. Structured dosage — not plain text."""

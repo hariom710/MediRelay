@@ -25,11 +25,11 @@ class Quotation(StateMachineMixin, models.Model):
 
     TRANSITIONS = {
         QuotationStatus.DRAFT: [QuotationStatus.SUBMITTED],
-        QuotationStatus.SUBMITTED: [QuotationStatus.VIEWED, QuotationStatus.SELECTED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED],
-        QuotationStatus.VIEWED: [QuotationStatus.SELECTED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED],
-        QuotationStatus.SELECTED: [],   # Terminal state for quotation item
-        QuotationStatus.REJECTED: [],   # Terminal state
-        QuotationStatus.EXPIRED: [],    # Terminal state
+        QuotationStatus.SUBMITTED: [QuotationStatus.VIEWED, QuotationStatus.SELECTED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED, QuotationStatus.DRAFT],
+        QuotationStatus.VIEWED: [QuotationStatus.SELECTED, QuotationStatus.REJECTED, QuotationStatus.EXPIRED, QuotationStatus.DRAFT],
+        QuotationStatus.SELECTED: [QuotationStatus.SUBMITTED, QuotationStatus.DRAFT],
+        QuotationStatus.REJECTED: [QuotationStatus.DRAFT],
+        QuotationStatus.EXPIRED: [QuotationStatus.DRAFT],
     }
     revision = models.PositiveIntegerField(default=1)
     pickup_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)

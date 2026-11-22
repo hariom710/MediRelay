@@ -5,9 +5,14 @@ from django.http import Http404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+from config.state_machine import InvalidStateTransitionError
 
 
 def api_exception_handler(exc, context):
+    if isinstance(exc, InvalidStateTransitionError):
+        msg = exc.message if hasattr(exc, 'message') else str(exc)
+        return Response({'detail': msg, 'code': 'invalid_state_transition'},
+                        status=status.HTTP_409_CONFLICT)
     if isinstance(exc, DjangoPermissionDenied):
         return Response({'detail': 'You do not have permission to perform this action.',
                          'code': 'permission_denied'},
