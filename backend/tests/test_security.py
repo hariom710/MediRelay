@@ -795,6 +795,18 @@ def test_register_existing_email_returns_generic_error(client, patient):
     assert 'already exists' not in body.get('detail', '').lower()
 
 
+@pytest.mark.django_db
+def test_password_shorter_than_10_chars_rejected_on_registration(client):
+    r = client.post('/api/v1/auth/register', {
+        'role': 'patient',
+        'email': 'shortpass@example.com',
+        'password': 'Short9!',  # length 7, less than 10
+    }, content_type='application/json')
+    assert r.status_code == 400
+    body = r.json()
+    assert 'password' in str(body).lower()
+
+
 # ---------------------------------------------------------------------------
 # 18. Failed login and share token lookups must be logged to AuditLog
 # ---------------------------------------------------------------------------
