@@ -50,7 +50,7 @@ MediRelay uses a **modular Django monolith** paired with a **Next.js App Router*
 
 ### Maturity & Verification Status
 
-MediRelay has a **fully functional, verified core loop (Milestones M0 through M5)** backed by **53 automated tests** in pytest. Every critical release gate — unauthorized access prevention, cross-patient isolation, oversell protection, version immutability, and state-machine transitions — is exercised and passing.
+MediRelay has a **fully functional, verified core loop (Milestones M0 through M5)** backed by **135 automated tests** in pytest. Every critical release gate — unauthorized access prevention, cross-patient isolation, oversell protection, version immutability, security hardening, and state-machine transitions — is exercised and passing.
 
 > [!NOTE]
 > In an exhaustive independent codebase audit conducted in November 2026, experimental modules for Tier C features (such as synthetic AI OCR and third-party laboratory stubs) were identified and cleanly segregated. MediRelay makes zero unverified claims: everything documented in this guide is verified by real code and automated test execution.
@@ -172,7 +172,7 @@ MediRelay/
 │   ├── orders/                     # Orders, order fulfillments, restocking, invoicing
 │   ├── audit/                      # Append-only audit logging ledger
 │   ├── notifications/              # In-transaction user notification dispatch
-│   └── tests/                      # 53 passing automated tests covering all release gates
+│   └── tests/                      # 135 passing automated tests covering all release gates & security
 ├── frontend/
 │   ├── package.json
 │   ├── next.config.ts
@@ -226,61 +226,161 @@ stateDiagram-v2
 
 ---
 
-## Installation & Setup
+## 🚀 How to Run the Project (Quick Start Guide)
 
-### Prerequisites
-- **Python:** Version 3.12 or 3.13
-- **Node.js:** Version 20.x or higher
-- **Package Managers:** `pip` (Python) and `npm` (Node)
+Follow these step-by-step instructions to run both the Django backend and Next.js frontend on your local machine.
 
-### 1. Clone the Repository
+### System Prerequisites
+Make sure the following tools are installed on your system:
+- **Python:** Version 3.12 or 3.13 (`python --version`)
+- **Node.js:** Version 20.x or higher (`node --version`)
+- **Git:** Installed and configured (`git --version`)
+- **Supported Operating Systems:** Windows (PowerShell / CMD), macOS, Linux
+
+---
+
+### Step 1: Clone the Repository
 ```powershell
-git clone https://github.com/your-org/medirelay.git
+git clone https://github.com/hariom710/MediRelay.git
 cd MediRelay
 ```
 
-### 2. Backend Setup
-```powershell
-# Navigate to backend directory
-cd backend
+---
 
-# Create and activate a virtual environment
-python -m venv venv
-.\venv\Scripts\Activate.ps1    # On Linux/macOS: source venv/bin/activate
+### Step 2: Backend Setup & Execution (Terminal 1)
 
-# Install dependencies
-pip install -r requirements.txt
+The backend is built with Django 5.2 and Django REST Framework. In development mode (`DJANGO_DEBUG=True`, default), **zero environment variables are needed**; it uses a safe default secret key and local SQLite (`db.sqlite3`).
 
-# Run database migrations
-python manage.py migrate
+1. Open a terminal and navigate to the `backend` folder:
+   ```powershell
+   cd backend
+   ```
 
-# Seed administrative user & roles in development (requires --email and --password)
-python manage.py seed_admin --email admin@example.com --password AdminPassword123!
-```
+2. Create and activate a Python virtual environment:
+   - **Windows (PowerShell):**
+     ```powershell
+     python -m venv venv
+     .\venv\Scripts\Activate.ps1
+     ```
+   - **Windows (Command Prompt):**
+     ```cmd
+     python -m venv venv
+     venv\Scripts\activate.bat
+     ```
+   - **macOS / Linux:**
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
 
-### Environment Variables (.env)
-- **Zero-config local development:** When `DJANGO_DEBUG=True` (default), all settings use safe development defaults. A new developer can run migrations and `runserver` immediately without setting any environment variables.
-- **Production settings:** When `DJANGO_DEBUG=False`, `DJANGO_SECRET_KEY` is strictly required and fails fast if omitted. See `backend/.env.example` for all production environment variables (`DJANGO_SECRET_KEY`, `DJANGO_DEBUG`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DJANGO_NUM_PROXIES`, `DJANGO_ENABLE_ADMIN`, `DJANGO_CACHE_BACKEND`).
+3. Install backend dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   ```
 
-Start the backend development server:
-```powershell
-python manage.py runserver
-# Server runs at http://localhost:8000
-```
+4. Apply database migrations:
+   ```powershell
+   python manage.py migrate
+   ```
 
-### 3. Frontend Setup
-In a new terminal window:
-```powershell
-# Navigate to frontend directory
-cd frontend
+5. Seed default system roles (`doctor`, `patient`, `pharmacy`, `admin`):
+   ```powershell
+   python manage.py seed_roles
+   ```
 
-# Install Node modules
-npm install
+6. Seed the initial administrative user:
+   ```powershell
+   python manage.py seed_admin --email admin@example.com --password AdminPassword123!
+   ```
+   > [!NOTE]
+   > The `seed_admin` management command requires explicit `--email` and `--password` flags and runs exclusively in development (`DJANGO_DEBUG=True`).
 
-# Run the development server
-npm run dev
-# Application accessible at http://localhost:3000
-```
+7. Start the Django development server:
+   ```powershell
+   python manage.py runserver 127.0.0.1:8000
+   ```
+   - **Backend API root:** [http://127.0.0.1:8000/api/v1/](http://127.0.0.1:8000/api/v1/)
+   - Keep this terminal window open while running the application.
+
+---
+
+### Step 3: Frontend Setup & Execution (Terminal 2)
+
+The frontend is built with Next.js 16 (App Router), React 19, TypeScript, and Tailwind CSS. The Next.js dev server proxies all `/api/*` requests directly to `http://localhost:8000`, ensuring cross-origin cookies work effortlessly without CORS issues.
+
+1. Open a **new, separate terminal** and navigate to the `frontend` folder:
+   ```powershell
+   cd frontend
+   ```
+
+2. Install Node dependencies:
+   ```powershell
+   npm install
+   ```
+
+3. Start the Next.js development server:
+   ```powershell
+   npm run dev
+   ```
+   - **Frontend Web Portal:** [http://localhost:3000](http://localhost:3000)
+   - Keep this terminal running alongside Terminal 1.
+
+---
+
+### Step 4: Accessing Application Portals
+
+Once both servers are running, access the following URLs in your web browser:
+
+| Portal / Page | URL | Purpose & Features |
+|:---|:---|:---|
+| **Landing Page** | [http://localhost:3000](http://localhost:3000) | Public overview, feature walkthrough, quick portal switcher |
+| **Login** | [http://localhost:3000/login](http://localhost:3000/login) | Authenticate into your account (session-cookie based) |
+| **Register** | [http://localhost:3000/register](http://localhost:3000/register) | Create a new Patient, Doctor, or Pharmacy profile |
+| **Doctor Portal** | [http://localhost:3000/doctor](http://localhost:3000/doctor) | Prescribing desk, allergy alerts, prescription finalization |
+| **Patient Portal** | [http://localhost:3000/patient](http://localhost:3000/patient) | Active prescriptions, 7-day share tokens, price comparison, ordering |
+| **Pharmacy Portal** | [http://localhost:3000/pharmacy](http://localhost:3000/pharmacy) | Requests inbox, itemized quotation builder, order fulfillment |
+| **Admin Portal** | [http://localhost:3000/admin](http://localhost:3000/admin) | Doctor & pharmacy license verification desk, append-only audit trail |
+| **Django Admin** | [http://127.0.0.1:8000/admin/](http://127.0.0.1:8000/admin/) | Django built-in ORM administration (`DJANGO_ENABLE_ADMIN=True`) |
+
+---
+
+### Step 5: End-to-End Demo Walkthrough
+
+To experience the complete prescription-to-fulfillment flow from scratch:
+
+1. **Log in as Administrator:**
+   - Go to [http://localhost:3000/login](http://localhost:3000/login)
+   - Sign in with: `admin@example.com` / `AdminPassword123!`
+   - Access the Admin Desk at [http://localhost:3000/admin](http://localhost:3000/admin).
+
+2. **Register Clinical Stakeholders:**
+   - Register a **Doctor** (e.g. `doctor@example.com` with a medical registration number).
+   - Register a **Pharmacy** (e.g. `pharmacy@example.com` with a drug store license).
+   - Register a **Patient** (e.g. `patient@example.com`).
+
+3. **Verify Providers:**
+   - In the Admin Desk ([http://localhost:3000/admin](http://localhost:3000/admin)), click **Approve** on the newly registered Doctor and Pharmacy profiles.
+
+4. **Prescribe & Fulfill:**
+   - Log in as the **Doctor**: Create a structured prescription for the patient with medication items, dosage schedules, and click **Finalize Prescription**.
+   - Log in as the **Patient**: View the finalized prescription and click **Share** to generate a cryptographic 7-day share link.
+   - Log in as the **Pharmacy**: View the shared prescription, input item pricing and pickup fees, and click **Submit Quotation**.
+   - Return to the **Patient**: Compare quotes across single and multi-pharmacy combinations, select the best quote, and click **Order Now**.
+   - The system atomically reserves stock under **FEFO** rules and generates a downloadable PDF receipt.
+
+---
+
+### Environment Variables Reference
+
+| Variable | Default (Dev) | Description |
+|:---|:---|:---|
+| `DJANGO_DEBUG` | `True` | Set `False` in production to enforce strict security checks |
+| `DJANGO_SECRET_KEY` | Dev fallback key | **Required** when `DJANGO_DEBUG=False`. Fails fast if missing |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated list of permitted hostnames |
+| `DJANGO_CSRF_TRUSTED_ORIGINS`| `http://localhost:3000,http://127.0.0.1:3000` | Allowed origins for state-mutating requests |
+| `DJANGO_NUM_PROXIES` | `0` | Number of reverse proxies (e.g., Nginx, Next.js) in front of Django |
+| `DJANGO_CACHE_BACKEND` | `locmem` | Cache engine (`locmem`, `redis`, `memcached`) |
+| `DJANGO_ENABLE_ADMIN` | `True` in dev, `False` in prod | Toggles Django admin interface URL route |
 
 ---
 
@@ -360,21 +460,21 @@ python -m pytest -q
 
 ### Current Test Suite Status
 ```text
-.....................................................                    [100%]
-53 passed in 97.81s (0:01:37)
+============================= 135 passed in 263.06s (0:04:23) =============================
 ```
 
-### Release Gates Covered by Automated Tests
+### Release Gates & Hardening Covered by Automated Tests
 
-| Gate | Risk Prevented | Test Location | Test Function |
+| Gate / Security Area | Scope & Risk Prevented | Test Location | Key Test Functions |
 |:---|:---|:---|:---|
-| **Gate 1** | Unauthorized pharmacy access to unshared prescriptions | `tests/test_gates.py` | `test_gate_pharmacy_cannot_access_unshared_prescription` |
-| **Gate 2** | Cross-patient prescription data leaks | `tests/test_gates.py` | `test_gate_patient_cannot_read_another_prescriptions` |
-| **Gate 3** | Concurrent overselling & expired batch sales under FEFO | `tests/test_gates.py` | `test_gate_concurrent_orders_cannot_oversell_fefo` |
-| **Gate 4** | Tampering or loss of history during prescription revision | `tests/test_gates.py` | `test_gate_prescription_revision_preserves_immutable_version` |
-| **Gate 5** | Database rollback caused by auxiliary notification failures | `tests/test_gates.py` | `test_gate_failed_notification_does_not_rollback_prescription` |
-| **State Gates** | Invalid state machine lifecycle transitions | `tests/test_state_machines.py` | `test_prescription_state_machine` |
-| **Catalog Gates** | Unintended automatic medicine brand substitutions | `tests/test_engine.py` | `test_substitution_flagged_and_rejected_from_comparison` |
+| **Gate 1: Access Isolation** | Unauthorized pharmacy access to unshared prescriptions | `tests/test_gates.py` | `test_gate_pharmacy_cannot_access_unshared_prescription` |
+| **Gate 2: Cross-Patient Isolation** | Cross-patient prescription IDOR data leaks | `tests/test_gates.py` | `test_gate_patient_cannot_read_another_prescriptions` |
+| **Gate 3: FEFO Concurrency** | Concurrent overselling & expired batch sales under FEFO | `tests/test_gates.py` | `test_gate_concurrent_orders_cannot_oversell_fefo` |
+| **Gate 4: Immutability** | Tampering or loss of history during prescription revision | `tests/test_gates.py` | `test_gate_prescription_revision_preserves_immutable_version` |
+| **Gate 5: Fault Isolation** | Database rollback caused by auxiliary notification failures | `tests/test_gates.py` | `test_gate_failed_notification_does_not_rollback_prescription` |
+| **State Machine Gates** | Invalid lifecycle transitions across domain models | `tests/test_state_machines.py` | `test_prescription_state_machine`, `test_threaded_concurrent_transitions` |
+| **Catalog & Anti-Substitution** | Unintended automatic medicine brand substitutions | `tests/test_engine.py` | `test_substitution_flagged_and_rejected_from_comparison` |
+| **Security Hardening (A-I)** | Anti-lockout throttling, proxy IP resolution, PDF sanitization, IDOR | `tests/test_security.py` | 54 comprehensive security tests |
 
 ### Running Concurrency & Race Tests on PostgreSQL
 
@@ -413,8 +513,9 @@ In adherence to radical engineering honesty, the following constraints and defer
 ### Phase 1: Core Fulfillment Hardening (Current)
 - [x] Complete M0 to M5 backend core loop.
 - [x] Implement declarative `StateMachineMixin` across all domain models.
-- [x] 53 passing automated tests covering all security and release gates.
-- [x] Exhaustive architectural and gap audit report (`docs/AUDIT_REPORT.md`).
+- [x] 135 passing automated tests covering all security, concurrency, and release gates.
+- [x] Comprehensive security audit & hardening report (`docs/SECURITY_REPORT.md`).
+- [x] Zero-dependency local developer quick start with safe dev defaults.
 
 ### Phase 2: Design Refinement & Clinical Extras (Near-Term)
 - [ ] Complete flat clinical design system migration on frontend (zero glassmorphism).
@@ -432,24 +533,53 @@ In adherence to radical engineering honesty, the following constraints and defer
 
 ## Troubleshooting
 
-### `The token '&&' is not a valid statement separator`
-**Cause:** Attempting to chain shell commands with `&&` inside Windows PowerShell.  
-**Fix:** Use `;` instead of `&&` in PowerShell:
-```powershell
-python manage.py migrate; python manage.py runserver
-```
+### 1. `The token '&&' is not a valid statement separator`
+- **Cause:** Attempting to chain shell commands with `&&` inside Windows PowerShell.
+- **Fix:** Use `;` instead of `&&` in PowerShell:
+  ```powershell
+  python manage.py migrate; python manage.py runserver
+  ```
 
-### `ImproperlyConfigured: Requested setting INSTALLED_APPS`
-**Cause:** Running `pytest` from the workspace root instead of the `backend/` directory.  
-**Fix:** Always change directory into `backend` before running tests:
-```powershell
-cd backend
-python -m pytest -q
-```
+### 2. `Port 3000 (or 8000) is already in use`
+- **Cause:** A previous instance of Next.js or Django is already running on the port.
+- **Fix (Windows):**
+  ```powershell
+  # Find PID occupying port 3000:
+  Get-NetTCPConnection -LocalPort 3000 | Select-Object OwningProcess
+  # Terminate process:
+  taskkill /PID <PID> /F
+  ```
+- **Fix (macOS / Linux):**
+  ```bash
+  lsof -ti:3000 | xargs kill -9
+  ```
 
-### CSRF Verification Failed on API Calls
-**Cause:** Making state-mutating requests (`POST`, `PATCH`, `DELETE`) without including the `X-CSRFToken` header.  
-**Fix:** Fetch the CSRF token from the `csrftoken` cookie set by `/api/v1/auth/login` and pass it in the `X-CSRFToken` header of all subsequent mutations.
+### 3. `Execution of scripts is disabled on this system` (PowerShell)
+- **Cause:** Windows PowerShell execution policy restricts running virtual environment activation scripts.
+- **Fix:** Run the following command in PowerShell:
+  ```powershell
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+  ```
+
+### 4. `ImproperlyConfigured: Requested setting INSTALLED_APPS`
+- **Cause:** Running `pytest` or Python commands from the repository root instead of the `backend/` directory.
+- **Fix:** Always change directory into `backend` before running tests or management commands:
+  ```powershell
+  cd backend
+  python -m pytest -q
+  ```
+
+### 5. CSRF Verification Failed on API Calls
+- **Cause:** Making state-mutating requests (`POST`, `PATCH`, `DELETE`) without including the `X-CSRFToken` header.
+- **Fix:** Fetch the CSRF token from the `csrftoken` cookie set by `/api/v1/auth/login` and pass it in the `X-CSRFToken` header of all subsequent mutations.
+
+### 6. PDF Generation / `UnicodeDecodeError` in Reports
+- **Cause:** Conflict between legacy `fpdf` and modern `fpdf2`.
+- **Fix:** Ensure only `fpdf2==2.9.0` is installed:
+  ```powershell
+  pip uninstall -y fpdf
+  pip install fpdf2==2.9.0
+  ```
 
 ---
 
