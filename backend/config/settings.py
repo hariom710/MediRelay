@@ -87,6 +87,8 @@ AUTH_USER_MODEL = 'accounts.User'
 # Next.js dev server proxies /api -> :8000, so browser only ever talks to :3000.
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
 
+NUM_PROXIES = 1
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
@@ -100,6 +102,15 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'config.exceptions.api_exception_handler',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '5/min',
+        'login_email': '5/min',
+        'register': '10/min',
+        'share_token': '20/min',
+    },
 }
 
 # Media (PDFs etc.) stored on local disk in v1; swap for S3 later.

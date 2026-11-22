@@ -791,29 +791,42 @@ def test_register_existing_email_returns_generic_error(client, patient):
         'password': 'StrongPass!99',
     }, content_type='application/json')
     assert r.status_code == 400
-    # After fix: response must NOT say 'already exists'
-    # Before fix: it does reveal this. Document current state:
     body = r.json()
-    # This assertion documents the VULNERABILITY (expected to fail before fix):
-    # assert 'already exists' not in body.get('detail', '').lower()
+    assert 'already exists' not in body.get('detail', '').lower()
 
 
 # ---------------------------------------------------------------------------
-# 18. Failed login must be logged to AuditLog
+# 18. Failed login and share token lookups must be logged to AuditLog
 # ---------------------------------------------------------------------------
 
 @pytest.mark.django_db
 def test_failed_login_creates_audit_log(client, patient):
-    initial_count = AuditLog.objects.count()
+    initial_count = AuditLog.objects.filter(action='user.login_failed').count()
     r = client.post('/api/v1/auth/login', {
         'email': patient.email,
         'password': 'wrongpassword',
     }, content_type='application/json')
     assert r.status_code == 400
-    # After fix: AuditLog must have a new 'user.login_failed' entry
-    # Before fix: no entry is created.
-    # new_count = AuditLog.objects.count()
-    # assert new_count == initial_count + 1  # uncomment after fix
+    assert AuditLog.objects.filter(action='user.login_failed').count() == initial_count + 1
+
+
+@pytest.mark.django_db
+def test_failed_share_token_lookup_creates_audit_log(client, pharmacy):
+    _login(client, pharmacy, 'pharmacy')
+    initial_count = AuditLog.objects.filter(action='prescription.share_lookup_failed').count()
+    r = client.get('/api/v1/shares/nonexistenttoken123')
+    assert r.status_code == 404
+    assert AuditLog.objects.filter(action='prescription.share_lookup_failed').count() == initial_count + 1
+
+
+@pytest.mark.django_db
+def test_login_throttling_exceeded(client, patient):
+    from django.core.cache import cache
+    cache.clear()
+    for _ in range(5):
+        client.post('/api/v1/auth/login', {'email': patient.email, 'password': 'wrong'}, content_type='application/json')
+    r = client.post('/api/v1/auth/login', {'email': patient.email, 'password': 'wrong'}, content_type='application/json')
+    assert r.status_code == 429
 
 
 # ---------------------------------------------------------------------------

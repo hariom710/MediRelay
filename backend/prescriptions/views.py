@@ -349,6 +349,8 @@ class ShareRevokeView(APIView):
 
 class ShareTokenView(APIView):
     """Pharmacy opens the link. Scoped view + access log. No patient history."""
+    from config.throttles import ShareTokenThrottle
+    throttle_classes = [ShareTokenThrottle]
 
     def get(self, request, token):
         from rest_framework.permissions import IsAuthenticated
@@ -361,6 +363,9 @@ class ShareTokenView(APIView):
             share = PrescriptionShare.objects.select_related('prescription').get(
                 token_hash=token_hash)
         except PrescriptionShare.DoesNotExist:
+            record(request.user if request.user.is_authenticated else None,
+                   'prescription.share_lookup_failed', 'share_token', 0,
+                   {'token_prefix': token[:8]}, request)
             return Response({'detail': 'Invalid link.', 'code': 'invalid_token'}, status=404)
 
         user = request.user
