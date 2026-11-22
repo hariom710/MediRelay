@@ -269,8 +269,9 @@ class PrescriptionPDFView(APIView):
         if not _can_view(request.user, rx):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
-        if rx.is_expired and rx.status == PrescriptionStatus.FINALIZED:
-            rx.transition_to(PrescriptionStatus.EXPIRED, actor=request.user, reason='Expired prescription', save=True)
+        if rx.is_expired:
+            return Response({'detail': 'This prescription has expired.',
+                             'code': 'prescription_expired'}, status=410)
         return prescription_pdf(rx)
 
 
@@ -348,6 +349,8 @@ class ShareRevokeView(APIView):
 
 class ShareTokenView(APIView):
     """Pharmacy opens the link. Scoped view + access log. No patient history."""
+    from config.throttles import ShareTokenThrottle
+    throttle_classes = [ShareTokenThrottle]
 
     def get(self, request, token):
         from rest_framework.permissions import IsAuthenticated
@@ -360,6 +363,9 @@ class ShareTokenView(APIView):
             share = PrescriptionShare.objects.select_related('prescription').get(
                 token_hash=token_hash)
         except PrescriptionShare.DoesNotExist:
+            record(request.user if request.user.is_authenticated else None,
+                   'prescription.share_lookup_failed', 'share_token', 0,
+                   {'token_prefix': token[:8]}, request)
             return Response({'detail': 'Invalid link.', 'code': 'invalid_token'}, status=404)
 
         user = request.user

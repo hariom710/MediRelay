@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
@@ -12,6 +14,20 @@ from prescriptions.models import Prescription, PrescriptionStatus, PrescriptionS
 from .engine import compare
 from .models import Quotation, QuotationItem, QuotationStatus
 from .serializers import QuotationSerializer
+
+MAX_PICKUP_FEE = Decimal('500.00')
+
+
+def _parse_pickup_fee(raw_fee) -> Decimal:
+    if raw_fee is None or raw_fee == '':
+        return Decimal('0.00')
+    try:
+        fee = Decimal(str(raw_fee))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError('pickup_fee must be a valid number.')
+    if fee < 0 or fee > MAX_PICKUP_FEE:
+        raise ValueError(f'pickup_fee must be between 0 and {MAX_PICKUP_FEE}.')
+    return fee
 
 
 class PharmacyRequestsView(APIView):
@@ -86,13 +102,18 @@ class QuotationListCreateView(APIView):
             return Response({'detail': 'items list is required.', 'code': 'validation_error'},
                             status=400)
 
+        try:
+            pickup_fee = _parse_pickup_fee(request.data.get('pickup_fee'))
+        except ValueError as e:
+            return Response({'detail': str(e), 'code': 'validation_error'}, status=400)
+
         valid_days = int(request.data.get('valid_days', 2))
         valid_days = max(1, min(valid_days, 14))
 
         with transaction.atomic():
             quote = Quotation.objects.create(
                 prescription=rx, pharmacy=profile, share=share,
-                pickup_fee=request.data.get('pickup_fee') or 0,
+                pickup_fee=pickup_fee,
                 valid_until=timezone.now() + timezone.timedelta(days=valid_days))
             try:
                 total = _save_items(quote, items_data, rx)
@@ -120,12 +141,26 @@ def _save_items(quote, items_data, rx):
             raise ValueError(f'duplicate prescription_item {pid}')
         seen.add(pid)
         available = bool(row.get('available', True))
+
+        raw_price = row.get('unit_price')
+        if raw_price is None or str(raw_price).strip() == '':
+            raise ValueError(f'unit_price is required for item {pid}.')
+        try:
+            unit_price = Decimal(str(raw_price))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError(f'unit_price for item {pid} must be a valid number.')
+
+        if available and unit_price <= Decimal('0'):
+            raise ValueError(f'unit_price for available item {pid} must be greater than zero.')
+        if not available:
+            unit_price = Decimal('0.00')
+
         qi = QuotationItem.objects.create(
             quotation=quote, prescription_item_id=pid,
             offered_medicine_id=row.get('offered_medicine') or None,
             available=available,
             qty_offered=int(row.get('qty_offered') or 0),
-            unit_price=Decimal(str(row.get('unit_price') or 0)),
+            unit_price=unit_price,
             batch_number=row.get('batch_number') or '',
             note=row.get('note') or '')
         if available:
@@ -231,7 +266,11 @@ class QuotationReviseView(APIView):
                 total = _save_items(quote, items_data, quote.prescription)
                 quote.total = total
             if 'pickup_fee' in request.data:
-                quote.pickup_fee = request.data['pickup_fee']
+                try:
+                    quote.pickup_fee = _parse_pickup_fee(request.data['pickup_fee'])
+                except ValueError as e:
+                    transaction.set_rollback(True)
+                    return Response({'detail': str(e), 'code': 'validation_error'}, status=400)
             if 'valid_days' in request.data:
                 days = max(1, min(int(request.data['valid_days']), 14))
                 quote.valid_until = timezone.now() + timezone.timedelta(days=days)

@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from audit.services import record
+from config.throttles import LoginEmailThrottle, LoginThrottle, RegisterThrottle
 
 from .models import DoctorProfile, PatientProfile, PharmacyProfile, Role, User
 from .permissions import IsAdminRole, IsDoctor, IsPatient, IsPharmacy
@@ -15,6 +16,7 @@ from .serializers import (DoctorProfileSerializer, PatientProfileSerializer,
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [RegisterThrottle]
 
     def post(self, request):
         ser = RegisterSerializer(data=request.data)
@@ -59,6 +61,7 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginThrottle, LoginEmailThrottle]
 
     def post(self, request):
         email = (request.data.get('email') or '').lower().strip()
@@ -67,6 +70,8 @@ class LoginView(APIView):
         from django.contrib.auth import authenticate
         user = authenticate(request, email=email, password=password)
         if user is None:
+            # Audit log failed login attempt
+            record(None, 'user.login_failed', 'user', 0, {'email': email[:100]}, request)
             return Response({'detail': 'Invalid email or password.', 'code': 'invalid_credentials'},
                             status=400)
         if not user.is_active:
