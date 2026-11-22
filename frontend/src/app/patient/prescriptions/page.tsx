@@ -123,16 +123,6 @@ export default function PatientPrescriptions() {
   useEffect(() => {
     loadPrescriptions();
   }, [loadPrescriptions]);
-        method: "POST",
-        body: { prescription_id: rxId },
-      });
-      setComparison(res);
-    } catch {
-      // Comparison may have 0 quotes submitted yet
-    } finally {
-      setLoadingCompare(false);
-    }
-  }
 
   function handleSelectRx(rx: Prescription) {
     setSelectedRx(rx);
