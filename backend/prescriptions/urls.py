@@ -12,5 +12,7 @@ urlpatterns = [
     path('prescriptions/<int:pk>/shares', views.ShareListCreateView.as_view()),
     path('prescriptions/<int:pk>/shares/<int:share_id>/revoke',
          views.ShareRevokeView.as_view()),
+    path('prescriptions/<int:pk>/access-logs',
+         views.PrescriptionAccessLogListView.as_view()),
     path('shares/<str:token>', views.ShareTokenView.as_view()),
 ]

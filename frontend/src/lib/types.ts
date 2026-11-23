@@ -1,0 +1,164 @@
+// Shared TypeScript types for API responses — no `any`
+
+export interface Me {
+  id: number;
+  email: string;
+  roles: string[];
+  active_role: string;
+  verification_status: string | null;
+}
+
+export interface Patient {
+  id: number;
+  name: string;
+  email: string;
+  date_of_birth: string | null;
+  gender: string;
+  blood_group: string;
+  allergies: string;
+}
+
+export interface Medicine {
+  id: number;
+  display_name: string;
+  generic_name: string;
+  brand_name: string;
+  strength: string;
+  dosage_form: string;
+  pack_size: number;
+  pack_unit: string;
+}
+
+export interface RxItem {
+  id: number | null;
+  medicine: number;
+  medicine_name: string;
+  strength: string;
+  dosage_form: string;
+  qty_per_dose: number;
+  morning: number;
+  afternoon: number;
+  night: number;
+  meal_timing: string;
+  duration_days: number;
+  total_qty: number;
+  calculated_qty: number;
+  instructions: string;
+  sort_order: number;
+}
+
+export interface Prescription {
+  id: number;
+  status: string;
+  version: number;
+  previous_version: number | null;
+  consultation_date: string;
+  valid_until: string | null;
+  is_expired: boolean;
+  notes: string;
+  signed_at: string | null;
+  patient: number;
+  patient_name: string;
+  doctor: number;
+  doctor_name: string;
+  items: RxItem[];
+}
+
+export interface InventoryItem {
+  id: number;
+  medicine: number;
+  medicine_name: string;
+  selling_price: string;
+  available_qty: number;
+  batches: Batch[];
+}
+
+export interface Batch {
+  id: number;
+  batch_number: string;
+  expiry_date: string;
+  qty: number;
+  mrp: string;
+  purchase_price: string;
+  is_expired: boolean;
+}
+
+export interface Quotation {
+  id: number;
+  prescription: number;
+  status: string;
+  total: string;
+  validity: string;
+  revision: number;
+  created_at: string;
+}
+
+export interface Order {
+  id: number;
+  status: string;
+  patient_name: string;
+  item_count: number;
+  subtotal: string;
+  created_at: string;
+}
+
+export interface Invoice {
+  id: number;
+  order: number;
+  patient: string;
+  total: string;
+  payment_status: string;
+  created_at: string;
+}
+
+export interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+}
+
+export interface PharmacyProfile {
+  id: number;
+  pharmacy_name: string;
+  address: string;
+  city: string;
+  pin_code: string;
+  phone: string;
+  opening_hours: string;
+  contact_person: string;
+  licence_number: string;
+  verification_status: string;
+  verification_note: string;
+  default_pickup_fee: string;
+  default_validity_days: number;
+}
+
+export interface DoctorProfile {
+  id: number;
+  qualification: string;
+  registration_number: string;
+  clinic_name: string;
+  verification_status: string;
+  verification_note: string;
+}
+
+export interface Request {
+  share_id: number;
+  prescription_id: number;
+  opened: boolean;
+  expires_at: string;
+  status?: string;
+}
+
+export interface Dashboard {
+  new_requests: number;
+  quotations_awaiting: number;
+  orders_to_fulfill: number;
+  low_stock: number;
+  expiring_soon: number;
+  recent_requests: { prescription_id: number; share_id: number; opened: boolean; expires_at: string }[];
+  recent_orders: { id: number; status: string; subtotal: string; created_at: string }[];
+}

@@ -57,6 +57,15 @@ class UserSerializer(serializers.ModelSerializer):
         return 'verified' if role == Role.PATIENT else None
 
 
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, write_only=True)
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+
 class DoctorProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoctorProfile
@@ -75,5 +84,7 @@ class PharmacyProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = PharmacyProfile
         fields = ['id', 'pharmacy_name', 'license_number', 'address', 'city',
+                  'pin_code', 'phone', 'opening_hours', 'contact_person',
+                  'default_pickup_fee', 'default_validity_days',
                   'verification_status', 'verification_note']
         read_only_fields = ['verification_status', 'verification_note']

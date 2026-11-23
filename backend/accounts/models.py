@@ -118,6 +118,12 @@ class PharmacyProfile(VerificationStateMachineMixin, models.Model):
     license_number = models.CharField(max_length=60, blank=True)
     address = models.TextField(blank=True)
     city = models.CharField(max_length=80, blank=True)
+    pin_code = models.CharField(max_length=10, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    opening_hours = models.CharField(max_length=200, blank=True)
+    contact_person = models.CharField(max_length=120, blank=True)
+    default_pickup_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    default_validity_days = models.IntegerField(default=7)
     verification_status = models.CharField(
         max_length=20, choices=VerificationStatus.choices, default=VerificationStatus.PENDING)
     verification_note = models.TextField(blank=True)
