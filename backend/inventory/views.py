@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 from accounts.permissions import IsVerifiedPharmacy
 from audit.services import record
 
-from .models import InventoryItem, MedicineBatch, StockMovement
+from .models import BatchStatus, InventoryItem, MedicineBatch, StockMovement
 from .serializers import BatchSerializer, InventoryItemSerializer, StockMovementSerializer
 
 
@@ -156,8 +156,13 @@ class StockAdjustmentView(APIView):
             return Response({'detail': 'Stock cannot go negative.', 'code': 'insufficient_stock'}, status=409)
 
         with transaction.atomic():
-            batch.qty += qty
-            batch.save(update_fields=['qty'])
+            new_qty = batch.qty + qty
+            batch.qty = new_qty
+            batch.save(update_fields=['qty'], bypass_transition_check=True)
+            if new_qty == 0 and batch.status == BatchStatus.ACTIVE:
+                batch.deplete(actor=request.user, request=request, reason=reason)
+            elif new_qty > 0 and batch.status == BatchStatus.DEPLETED:
+                batch.reactivate(actor=request.user, request=request, reason=reason)
             StockMovement.objects.create(
                 batch=batch, movement_type='adjust', quantity=qty,
                 reason=reason, ref_type='manual', ref_id=note,
@@ -207,7 +212,8 @@ class ExpireBatchView(APIView):
                 reason='expiry write-off', ref_type='manual', ref_id='',
                 created_by=request.user)
             batch.qty = 0
-            batch.save(update_fields=['qty'])
+            batch.save(update_fields=['qty'], bypass_transition_check=True)
+            batch.write_off(actor=request.user, request=request, reason='Expiry write-off')
             record(request.user, 'inventory.expire', 'batch', batch.id,
                    {'qty': batch.qty}, request)
         return Response(BatchSerializer(batch).data)

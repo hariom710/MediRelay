@@ -8,7 +8,7 @@ class BatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MedicineBatch
-        fields = ['id', 'batch_number', 'expiry_date', 'qty', 'mrp',
+        fields = ['id', 'batch_number', 'expiry_date', 'qty', 'status', 'mrp',
                   'purchase_price', 'is_expired']
 
 

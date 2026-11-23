@@ -13,7 +13,7 @@ from audit.models import PrescriptionAccessLog
 from audit.services import record
 from notifications.services import notify
 
-from .models import Prescription, PrescriptionItem, PrescriptionShare, PrescriptionStatus
+from .models import Prescription, PrescriptionItem, PrescriptionShare, PrescriptionStatus, ShareStatus
 from .serializers import (ItemWriteSerializer, PharmacyRxSerializer,
                           PrescriptionItemSerializer, PrescriptionSerializer,
                           ShareSerializer)
@@ -352,9 +352,8 @@ class ShareRevokeView(APIView):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         if not _can_view(request.user, share.prescription):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-        if share.revoked_at is None:
-            share.revoked_at = timezone.now()
-            share.save(update_fields=['revoked_at'])
+        if share.status == ShareStatus.ACTIVE and share.revoked_at is None:
+            share.revoke(actor=request.user, request=request, reason='Share link revoked by user')
             record(request.user, 'prescription.share_revoke', 'prescription', pk,
                    {'share_id': share.id}, request)
         return Response(ShareSerializer(share).data)
@@ -417,9 +416,9 @@ class ShareTokenView(APIView):
             if share.pharmacy_id and share.pharmacy_id != profile.id:
                 return Response({'detail': 'Invalid link.', 'code': 'invalid_token'}, status=404)
 
-        if share.revoked_at is not None:
+        if share.status == ShareStatus.REVOKED or share.revoked_at is not None:
             return Response({'detail': 'This link was revoked.', 'code': 'revoked'}, status=410)
-        if not share.is_active:
+        if not share.is_active or share.status == ShareStatus.EXPIRED:
             return Response({'detail': 'This link has expired.', 'code': 'expired'}, status=410)
 
         rx = share.prescription

@@ -2,7 +2,7 @@ import threading
 import pytest
 from django.utils import timezone
 from config.state_machine import InvalidStateTransitionError
-from prescriptions.models import Prescription, PrescriptionStatus, PrescriptionItem
+from prescriptions.models import Prescription, PrescriptionStatus, PrescriptionItem, PrescriptionShare, ShareStatus
 from quotations.models import Quotation, QuotationStatus, QuotationItem
 from orders.models import (
     Order, OrderStatus, OrderFulfillment, FulfillmentStatus,
@@ -10,7 +10,8 @@ from orders.models import (
 )
 from accounts.models import User, DoctorProfile, PharmacyProfile, VerificationStatus
 from catalog.models import Medicine
-from inventory.models import InventoryItem, MedicineBatch
+from inventory.models import InventoryItem, MedicineBatch, BatchStatus
+from notifications.models import Notification, NotificationStatus
 from audit.models import AuditLog
 
 
@@ -540,7 +541,7 @@ def test_cancel_fulfillment_multi_pharmacy_releases_only_target_and_expires_if_p
     # Cancel fulfillment again when quotation expired
     ful1_model = OrderFulfillment.objects.get(pk=ful1['id'])
     ful1_model.status = FulfillmentStatus.PENDING
-    ful1_model.save(update_fields=['status'])
+    ful1_model.save(update_fields=['status'], bypass_transition_check=True)
 
     client.post(f'/api/v1/orders/{order_id}/fulfillments/{ful1["id"]}/cancel')
     quote1.refresh_from_db()
@@ -636,3 +637,205 @@ def test_expire_stale_management_command_and_read_isolation(client, patient, pha
     # Database status is now transitioned to EXPIRED
     assert rx.status == PrescriptionStatus.EXPIRED
     assert quote.status == QuotationStatus.EXPIRED
+
+
+@pytest.mark.django_db
+def test_prescription_share_state_machine(patient, doctor):
+    """PrescriptionShare explicit state machine: ACTIVE -> REVOKED / EXPIRED."""
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22", status=PrescriptionStatus.FINALIZED
+    )
+    share = PrescriptionShare.objects.create(
+        prescription=rx,
+        token_hash="a"*64,
+        created_by=patient,
+        expires_at=timezone.now() + timezone.timedelta(days=7),
+        status=ShareStatus.ACTIVE
+    )
+    assert share.status == ShareStatus.ACTIVE
+    assert share.is_active is True
+
+    # Valid transition: ACTIVE -> REVOKED
+    share.revoke(actor=patient, reason="Patient revoked access")
+    assert share.status == ShareStatus.REVOKED
+    assert share.is_active is False
+    assert share.revoked_at is not None
+
+    # Invalid transition: REVOKED -> ACTIVE (terminal)
+    with pytest.raises(InvalidStateTransitionError):
+        share.transition_to(ShareStatus.ACTIVE)
+
+    # Test ACTIVE -> EXPIRED
+    share2 = PrescriptionShare.objects.create(
+        prescription=rx,
+        token_hash="b"*64,
+        created_by=patient,
+        expires_at=timezone.now() + timezone.timedelta(days=7),
+        status=ShareStatus.ACTIVE
+    )
+    share2.expire(reason="Token expired")
+    assert share2.status == ShareStatus.EXPIRED
+    assert share2.is_active is False
+
+
+@pytest.mark.django_db
+def test_medicine_batch_state_machine(pharmacy, medicine):
+    """MedicineBatch explicit state machine: ACTIVE -> DEPLETED / EXPIRED -> WRITTEN_OFF."""
+    inv = InventoryItem.objects.create(pharmacy=pharmacy.pharmacy_profile, medicine=medicine, selling_price=100)
+    batch = MedicineBatch.objects.create(
+        inventory_item=inv,
+        batch_number="BATCH-SM-001",
+        expiry_date=timezone.now().date() + timezone.timedelta(days=180),
+        qty=50,
+        status=BatchStatus.ACTIVE
+    )
+    assert batch.status == BatchStatus.ACTIVE
+
+    # ACTIVE -> DEPLETED
+    batch.deplete(actor=pharmacy, reason="Sold out")
+    assert batch.status == BatchStatus.DEPLETED
+
+    # DEPLETED -> ACTIVE (reactivation with new stock)
+    batch.reactivate(actor=pharmacy, reason="Stock replenished")
+    assert batch.status == BatchStatus.ACTIVE
+
+    # ACTIVE -> EXPIRED
+    batch.mark_expired(actor=pharmacy, reason="Batch expired")
+    assert batch.status == BatchStatus.EXPIRED
+
+    # EXPIRED -> WRITTEN_OFF
+    batch.write_off(actor=pharmacy, reason="Disposed expired stock")
+    assert batch.status == BatchStatus.WRITTEN_OFF
+
+    # WRITTEN_OFF is terminal: cannot go to ACTIVE
+    with pytest.raises(InvalidStateTransitionError):
+        batch.transition_to(BatchStatus.ACTIVE)
+
+
+@pytest.mark.django_db
+def test_notification_state_machine(patient):
+    """Notification explicit state machine: UNREAD -> READ -> ARCHIVED."""
+    notif = Notification.objects.create(
+        user=patient,
+        notification_type="test_alert",
+        title="Test Alert",
+        body="Body",
+        status=NotificationStatus.UNREAD
+    )
+    assert notif.status == NotificationStatus.UNREAD
+
+    # UNREAD -> READ
+    notif.mark_read(actor=patient)
+    assert notif.status == NotificationStatus.READ
+    assert notif.read_at is not None
+
+    # READ -> ARCHIVED
+    notif.archive(actor=patient)
+    assert notif.status == NotificationStatus.ARCHIVED
+
+    # ARCHIVED is terminal
+    with pytest.raises(InvalidStateTransitionError):
+        notif.transition_to(NotificationStatus.UNREAD)
+
+
+@pytest.mark.django_db
+def test_order_fulfillment_multi_stage_lifecycle(patient, pharmacy, doctor):
+    """OrderFulfillment multi-stage progression: PENDING -> IN_PROGRESS -> READY_FOR_PICKUP -> FULFILLED."""
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22", status=PrescriptionStatus.FINALIZED
+    )
+    order = Order.objects.create(patient=patient.patient_profile, prescription=rx)
+    ful = OrderFulfillment.objects.create(order=order, pharmacy=pharmacy.pharmacy_profile)
+    assert ful.status == FulfillmentStatus.PENDING
+
+    # Step 1: PENDING -> IN_PROGRESS
+    ful.start_processing(actor=pharmacy, reason="Packing medicines")
+    assert ful.status == FulfillmentStatus.IN_PROGRESS
+
+    # Step 2: IN_PROGRESS -> READY_FOR_PICKUP
+    ful.mark_ready(actor=pharmacy, reason="Ready in counter")
+    assert ful.status == FulfillmentStatus.READY_FOR_PICKUP
+
+    # Step 3: READY_FOR_PICKUP -> FULFILLED
+    ful.fulfill(actor=pharmacy, reason="Patient collected order")
+    assert ful.status == FulfillmentStatus.FULFILLED
+
+    # Step 4: FULFILLED is terminal -> cannot cancel
+    with pytest.raises(InvalidStateTransitionError):
+        ful.cancel(actor=pharmacy)
+
+
+@pytest.mark.django_db
+def test_direct_save_illegal_transition_blocked(doctor, patient):
+    """Setting status directly and calling .save() is guarded by StateMachineMixin."""
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22"
+    )
+    assert rx.status == PrescriptionStatus.DRAFT
+
+    # Attempt illegal status change via direct .save(): DRAFT directly to REVISED
+    rx.status = PrescriptionStatus.REVISED
+    with pytest.raises(InvalidStateTransitionError) as exc_info:
+        rx.save()
+
+    assert "Cannot transition Prescription from 'draft' to 'revised'" in str(exc_info.value)
+
+    # Valid status change via direct .save() succeeds: DRAFT -> FINALIZED
+    rx.status = PrescriptionStatus.FINALIZED
+    rx.save()
+    assert rx.status == PrescriptionStatus.FINALIZED
+
+
+@pytest.mark.django_db
+def test_model_domain_transition_helpers(doctor, patient, pharmacy):
+    """Domain helper methods work uniformly across domain models."""
+    # 1. Prescription helpers
+    rx = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22"
+    )
+    rx.finalize(actor=doctor)
+    assert rx.status == PrescriptionStatus.FINALIZED
+    assert rx.signed_at is not None
+
+    rx.revise(reason="Dosage adjustment", actor=doctor)
+    assert rx.status == PrescriptionStatus.REVISED
+    assert rx.revision_reason == "Dosage adjustment"
+
+    # 2. Quotation helpers
+    rx2 = Prescription.objects.create(
+        doctor=doctor.doctor_profile, patient=patient.patient_profile,
+        consultation_date="2026-11-22", status=PrescriptionStatus.FINALIZED
+    )
+    quote = Quotation.objects.create(
+        prescription=rx2, pharmacy=pharmacy.pharmacy_profile,
+        valid_until=timezone.now() + timezone.timedelta(days=7),
+        status=QuotationStatus.DRAFT
+    )
+    quote.submit(actor=pharmacy)
+    assert quote.status == QuotationStatus.SUBMITTED
+    assert quote.submitted_at is not None
+
+    quote.mark_viewed(actor=patient)
+    assert quote.status == QuotationStatus.VIEWED
+
+    quote.select(actor=patient)
+    assert quote.status == QuotationStatus.SELECTED
+
+    # 3. Order & Invoice helpers
+    order = Order.objects.create(patient=patient.patient_profile, prescription=rx2)
+    order.complete(actor=doctor)
+    assert order.status == OrderStatus.COMPLETED
+
+    ful = OrderFulfillment.objects.create(order=order, pharmacy=pharmacy.pharmacy_profile, status=FulfillmentStatus.FULFILLED)
+    inv = Invoice.objects.create(fulfillment=ful, invoice_number="INV-HELPER-001")
+    assert inv.payment_status == PaymentStatus.PENDING
+
+    inv.mark_paid(actor=pharmacy)
+    assert inv.payment_status == PaymentStatus.PAID
+
+    inv.refund(actor=pharmacy)
+    assert inv.payment_status == PaymentStatus.REFUNDED

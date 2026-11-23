@@ -26,14 +26,61 @@ class StateMachineMixin:
     """
     Mixin for models that have a state/status machine.
     Requires TRANSITIONS dict: { current_state: [allowed_next_states] }
+    Guards against direct .save() bypasses, ensures atomic conditional UPDATE,
+    and writes transactional audit logs.
     """
     status_field_name = 'status'
     TRANSITIONS = {}
 
-    def can_transition_to(self, target_state: str) -> bool:
-        current_state = getattr(self, self.status_field_name)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._initial_state = getattr(self, self.status_field_name, None)
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        try:
+            status_idx = field_names.index(cls.status_field_name)
+            instance._initial_state = values[status_idx]
+        except (ValueError, IndexError):
+            instance._initial_state = getattr(instance, cls.status_field_name, None)
+        return instance
+
+    def can_transition_to(self, target_state: str, from_state: str = None) -> bool:
+        current_state = from_state if from_state is not None else getattr(self, self.status_field_name)
         allowed = self.TRANSITIONS.get(current_state, [])
         return target_state in allowed
+
+    def clean(self):
+        super().clean()
+        bypass = getattr(self, '_bypass_transition_check', False)
+        if not bypass and self.pk:
+            initial = getattr(self, '_initial_state', None)
+            current = getattr(self, self.status_field_name, None)
+            if initial is not None and current is not None and current != initial:
+                if not self.can_transition_to(current, from_state=initial):
+                    raise InvalidStateTransitionError(
+                        model_name=self.__class__.__name__,
+                        current_state=initial,
+                        target_state=current,
+                        allowed=self.TRANSITIONS.get(initial, [])
+                    )
+
+    def save(self, *args, **kwargs):
+        bypass = kwargs.pop('bypass_transition_check', False) or getattr(self, '_bypass_transition_check', False)
+        if not bypass and self.pk:
+            initial = getattr(self, '_initial_state', None)
+            current = getattr(self, self.status_field_name, None)
+            if initial is not None and current is not None and current != initial:
+                if not self.can_transition_to(current, from_state=initial):
+                    raise InvalidStateTransitionError(
+                        model_name=self.__class__.__name__,
+                        current_state=initial,
+                        target_state=current,
+                        allowed=self.TRANSITIONS.get(initial, [])
+                    )
+        super().save(*args, **kwargs)
+        self._initial_state = getattr(self, self.status_field_name, None)
 
     def transition_to(
         self,
@@ -56,6 +103,7 @@ class StateMachineMixin:
 
         if not self.pk or not save:
             setattr(self, self.status_field_name, target_state)
+            self._initial_state = target_state
             return
 
         with transaction.atomic():
@@ -88,6 +136,7 @@ class StateMachineMixin:
                 )
 
             setattr(self, self.status_field_name, target_state)
+            self._initial_state = target_state
 
             # Transactional audit logging inside the exact same atomic block
             from audit.models import AuditLog

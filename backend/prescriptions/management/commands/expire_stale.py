@@ -1,11 +1,11 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from prescriptions.models import Prescription, PrescriptionStatus
+from prescriptions.models import Prescription, PrescriptionShare, PrescriptionStatus, ShareStatus
 from quotations.models import Quotation, QuotationStatus
 
 
 class Command(BaseCommand):
-    help = 'Expires stale prescriptions and quotations past their validity date.'
+    help = 'Expires stale prescriptions, quotations, and shares past their validity date.'
 
     def handle(self, *args, **options):
         now_date = timezone.now().date()
@@ -31,6 +31,16 @@ class Command(BaseCommand):
             q.transition_to(QuotationStatus.EXPIRED, reason='Expired by expire_stale command', save=True)
             quote_count += 1
 
+        # Expire stale shares
+        stale_shares = PrescriptionShare.objects.filter(
+            status=ShareStatus.ACTIVE,
+            expires_at__lt=now_time
+        )
+        share_count = 0
+        for s in stale_shares:
+            s.transition_to(ShareStatus.EXPIRED, reason='Expired by expire_stale command', save=True)
+            share_count += 1
+
         self.stdout.write(self.style.SUCCESS(
-            f'Expired {rx_count} prescription(s) and {quote_count} quotation(s).'
+            f'Expired {rx_count} prescription(s), {quote_count} quotation(s), and {share_count} share(s).'
         ))

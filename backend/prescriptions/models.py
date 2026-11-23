@@ -79,6 +79,43 @@ class Prescription(StateMachineMixin, models.Model):
         target = v_date or (c_date + timedelta(days=30))
         return now_date > target
 
+    def finalize(self, actor=None, reason: str = None, request=None):
+        from django.utils import timezone
+        self.signed_at = timezone.now()
+        return self.transition_to(
+            PrescriptionStatus.FINALIZED,
+            actor=actor,
+            reason=reason or 'Prescription finalized and signed',
+            request=request,
+            update_fields=['signed_at']
+        )
+
+    def revise(self, reason: str, actor=None, request=None):
+        self.revision_reason = reason
+        return self.transition_to(
+            PrescriptionStatus.REVISED,
+            actor=actor,
+            reason=reason,
+            request=request,
+            update_fields=['revision_reason']
+        )
+
+    def cancel(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            PrescriptionStatus.CANCELLED,
+            actor=actor,
+            reason=reason or 'Prescription cancelled',
+            request=request
+        )
+
+    def expire(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            PrescriptionStatus.EXPIRED,
+            actor=actor,
+            reason=reason or 'Prescription expired',
+            request=request
+        )
+
 
 class PrescriptionItem(models.Model):
     """One medicine line. Structured dosage — not plain text."""
@@ -113,7 +150,13 @@ class PrescriptionItem(models.Model):
         return self.doses_per_day * self.qty_per_dose * self.duration_days
 
 
-class PrescriptionShare(models.Model):
+class ShareStatus(models.TextChoices):
+    ACTIVE = 'active', 'Active'
+    REVOKED = 'revoked', 'Revoked'
+    EXPIRED = 'expired', 'Expired'
+
+
+class PrescriptionShare(StateMachineMixin, models.Model):
     """Token = consent record. Pharmacy sees rx items only, never patient history."""
 
     prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE,
@@ -122,11 +165,19 @@ class PrescriptionShare(models.Model):
     pharmacy = models.ForeignKey('accounts.PharmacyProfile', null=True, blank=True,
                                  on_delete=models.CASCADE, related_name='prescription_shares')
     token_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    status = models.CharField(max_length=20, choices=ShareStatus.choices,
+                              default=ShareStatus.ACTIVE)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                    related_name='+')
     expires_at = models.DateTimeField()
     revoked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    TRANSITIONS = {
+        ShareStatus.ACTIVE: [ShareStatus.REVOKED, ShareStatus.EXPIRED],
+        ShareStatus.REVOKED: [],
+        ShareStatus.EXPIRED: [],
+    }
 
     class Meta:
         ordering = ['-created_at']
@@ -134,4 +185,29 @@ class PrescriptionShare(models.Model):
     @property
     def is_active(self):
         from django.utils import timezone
-        return self.revoked_at is None and self.expires_at > timezone.now()
+        if self.status != ShareStatus.ACTIVE:
+            return False
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at <= timezone.now():
+            return False
+        return True
+
+    def revoke(self, actor=None, reason: str = None, request=None):
+        from django.utils import timezone
+        self.revoked_at = timezone.now()
+        return self.transition_to(
+            ShareStatus.REVOKED,
+            actor=actor,
+            reason=reason or 'Share link revoked',
+            request=request,
+            update_fields=['revoked_at']
+        )
+
+    def expire(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            ShareStatus.EXPIRED,
+            actor=actor,
+            reason=reason or 'Share link validity expired',
+            request=request
+        )
