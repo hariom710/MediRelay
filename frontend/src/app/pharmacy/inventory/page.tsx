@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -57,7 +59,7 @@ export default function InventoryPage() {
             <p className="text-sm text-ink-secondary">Manage your pharmacy stock.</p>
           </div>
           <Button asChild>
-            <a href="/pharmacy/inventory/add">Add item</a>
+            <Link href="/pharmacy/inventory/add">Add item</Link>
           </Button>
         </div>
 

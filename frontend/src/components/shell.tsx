@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -43,10 +43,6 @@ export default function PortalShell({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const [pathname] = useState<string | undefined>(() => {
-    if (typeof window !== "undefined") return window.location.pathname;
-    return undefined;
-  });
   const [me, setMe] = useState<Me | null | undefined>(undefined);
 
   useEffect(() => {
@@ -68,10 +64,6 @@ export default function PortalShell({
     return () => { cancelled = true; };
   }, [role, router]);
 
-  if (pathname === undefined) {
-    return <div className="h-8 w-8 rounded border-border" />;
-  }
-
   async function logout() {
     await api("/auth/logout", { method: "POST" }).catch(() => {});
     router.replace("/login");
@@ -86,7 +78,6 @@ export default function PortalShell({
   }
 
   const otherRoles = me?.roles.filter((r) => r !== role) ?? [];
-  const active = NAV[role]?.find((i) => i.href === pathname);
 
   return (
     <div className="flex min-h-screen bg-bg">
@@ -104,8 +95,7 @@ export default function PortalShell({
               key={item.href}
               href={item.href}
               className={cn(
-                "tap-interactive flex items-center rounded px-3 py-2 text-sm transition-colors",
-                active?.href === pathname ? "bg-accent text-white" : "text-ink-secondary hover:bg-accent/10 hover:text-accent",
+                "tap-interactive flex items-center rounded px-3 py-2 text-sm transition-colors text-ink-secondary hover:bg-accent/10 hover:text-accent",
               )}
             >
               {item.label}

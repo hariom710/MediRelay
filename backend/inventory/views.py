@@ -129,6 +129,90 @@ class BatchCreateView(APIView):
         return Response(BatchSerializer(batch).data, status=201)
 
 
+class StockAdjustmentView(APIView):
+    """Adjust stock quantity with a required reason (damage, count correction, etc.)."""
+    permission_classes = [IsVerifiedPharmacy]
+
+    def post(self, request, item_id, batch_id):
+        try:
+            item = request.user.pharmacy_profile.inventory_items.get(pk=item_id)
+        except InventoryItem.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        try:
+            batch = item.batches.get(pk=batch_id)
+        except MedicineBatch.DoesNotExist:
+            return Response({'detail': 'Batch not found.', 'code': 'not_found'}, status=404)
+
+        reason = request.data.get('reason', '').strip()
+        if not reason:
+            return Response({'detail': 'reason is required.', 'code': 'validation_error'}, status=400)
+        note = request.data.get('note', '')
+        try:
+            qty = int(request.data.get('quantity', 0))
+        except (TypeError, ValueError):
+            return Response({'detail': 'quantity must be an integer.', 'code': 'validation_error'}, status=400)
+
+        if batch.qty + qty < 0:
+            return Response({'detail': 'Stock cannot go negative.', 'code': 'insufficient_stock'}, status=409)
+
+        with transaction.atomic():
+            batch.qty += qty
+            batch.save(update_fields=['qty'])
+            StockMovement.objects.create(
+                batch=batch, movement_type='adjust', quantity=qty,
+                reason=reason, ref_type='manual', ref_id=note,
+                created_by=request.user)
+            record(request.user, 'inventory.adjust', 'batch', batch.id,
+                   {'qty': qty, 'reason': reason}, request)
+        return Response(BatchSerializer(batch).data)
+
+
+class StockLedgerView(APIView):
+    """Read-only append-only stock ledger for an inventory item."""
+    permission_classes = [IsVerifiedPharmacy]
+
+    def get(self, request, item_id):
+        try:
+            item = request.user.pharmacy_profile.inventory_items.get(pk=item_id)
+        except InventoryItem.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        movements = (StockMovement.objects
+                     .filter(batch__inventory_item=item)
+                     .select_related('batch', 'created_by')
+                     .order_by('-created_at')[:100])
+        return Response(StockMovementSerializer(movements, many=True).data)
+
+
+class ExpireBatchView(APIView):
+    """Write off an expired batch."""
+    permission_classes = [IsVerifiedPharmacy]
+
+    def post(self, request, item_id, batch_id):
+        try:
+            item = request.user.pharmacy_profile.inventory_items.get(pk=item_id)
+        except InventoryItem.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        try:
+            batch = item.batches.get(pk=batch_id)
+        except MedicineBatch.DoesNotExist:
+            return Response({'detail': 'Batch not found.', 'code': 'not_found'}, status=404)
+        if not batch.is_expired:
+            return Response({'detail': 'Batch is not expired.', 'code': 'validation_error'}, status=400)
+        if batch.qty <= 0:
+            return Response({'detail': 'Batch already empty.', 'code': 'validation_error'}, status=400)
+
+        with transaction.atomic():
+            StockMovement.objects.create(
+                batch=batch, movement_type='expire', quantity=-batch.qty,
+                reason='expiry write-off', ref_type='manual', ref_id='',
+                created_by=request.user)
+            batch.qty = 0
+            batch.save(update_fields=['qty'])
+            record(request.user, 'inventory.expire', 'batch', batch.id,
+                   {'qty': batch.qty}, request)
+        return Response(BatchSerializer(batch).data)
+
+
 class ExpiryAlertView(APIView):
     """Low stock + expiry alerts for the pharmacy dashboard."""
 

@@ -84,5 +84,7 @@ class PharmacyProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = PharmacyProfile
         fields = ['id', 'pharmacy_name', 'license_number', 'address', 'city',
+                  'pin_code', 'phone', 'opening_hours', 'contact_person',
+                  'default_pickup_fee', 'default_validity_days',
                   'verification_status', 'verification_note']
         read_only_fields = ['verification_status', 'verification_note']

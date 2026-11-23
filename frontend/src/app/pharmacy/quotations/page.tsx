@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -45,7 +47,7 @@ export default function QuotationsPage() {
             <p className="text-sm text-ink-secondary">Your quotations to patients.</p>
           </div>
           <Button asChild>
-            <a href="/pharmacy/requests">Create from request</a>
+            <Link href="/pharmacy/requests">Create from request</Link>
           </Button>
         </div>
 

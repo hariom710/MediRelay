@@ -11,6 +11,7 @@ urlpatterns = [
     path('auth/switch-role', views.SwitchRoleView.as_view()),
     path('doctor/profile', views.DoctorProfileView.as_view()),
     path('doctor/dashboard', views.DoctorDashboardView.as_view()),
+    path('pharmacy/dashboard', views.PharmacyDashboardView.as_view()),
     path('patient/profile', views.PatientProfileView.as_view()),
     path('pharmacy/profile', views.PharmacyProfileView.as_view()),
     path('admin/verifications', views.VerificationQueueView.as_view()),

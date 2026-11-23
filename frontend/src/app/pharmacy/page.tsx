@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -34,8 +36,8 @@ export default function PharmacyDashboard() {
             <p className="text-sm text-ink-secondary">Overview of your pharmacy operations.</p>
           </div>
           <div className="flex gap-3">
-            <Button asChild><a href="/pharmacy/requests">Verify share link</a></Button>
-            <Button asChild><a href="/pharmacy/inventory/add">Add stock</a></Button>
+            <Button asChild><Link href="/pharmacy/requests">Verify share link</Link></Button>
+            <Button asChild><Link href="/pharmacy/inventory/add">Add stock</Link></Button>
           </div>
         </div>
 

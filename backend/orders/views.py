@@ -169,6 +169,56 @@ class OrderListView(APIView):
         return Response(OrderSerializer(qs[:100], many=True).data)
 
 
+class PharmacyOrderListView(APIView):
+    """Orders that this pharmacy must fulfill."""
+    permission_classes = [IsVerifiedPharmacy]
+
+    def get(self, request):
+        profile = request.user.pharmacy_profile
+        fulfillments = (OrderFulfillment.objects
+                        .filter(pharmacy=profile)
+                        .select_related('order', 'order__patient__user')
+                        .order_by('-created_at')[:100])
+        data = []
+        for f in fulfillments:
+            order = f.order
+            data.append({
+                'id': order.id,
+                'fulfillment_id': f.id,
+                'status': f.status,
+                'patient_name': order.patient.user.get_full_name() or 'Patient',
+                'item_count': f.items.count(),
+                'subtotal': str(f.subtotal),
+                'pickup_fee': str(f.pickup_fee),
+                'created_at': f.created_at.isoformat(),
+            })
+        return Response(data)
+
+
+class InvoiceListView(APIView):
+    """Invoices issued by this pharmacy."""
+    permission_classes = [IsVerifiedPharmacy]
+
+    def get(self, request):
+        profile = request.user.pharmacy_profile
+        invoices = (Invoice.objects
+                    .filter(fulfillment__pharmacy=profile)
+                    .select_related('fulfillment__order__patient__user')
+                    .order_by('-issued_at')[:100])
+        data = []
+        for inv in invoices:
+            data.append({
+                'id': inv.id,
+                'invoice_number': inv.invoice_number,
+                'order_id': inv.fulfillment.order_id,
+                'patient': inv.fulfillment.order.patient.user.get_full_name() or 'Patient',
+                'total': str(inv.fulfillment.subtotal + inv.fulfillment.pickup_fee),
+                'payment_status': inv.payment_status,
+                'issued_at': inv.issued_at.isoformat(),
+            })
+        return Response(data)
+
+
 class OrderDetailView(APIView):
     def get(self, request, pk):
         try:

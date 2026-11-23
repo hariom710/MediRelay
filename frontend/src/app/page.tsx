@@ -34,14 +34,18 @@ export default function HomePage() {
             <p className="text-sm font-medium text-ink-secondary">
               Signed in as <span className="font-semibold">{me.email}</span>
             </p>
-            <p className="text-xs text-ink-tertiary">{me.active_role} portal</p>
+            <p className="text-xs text-ink-tertiary">
+              Roles: {me.roles.join(", ")} · Active: {me.active_role}
+            </p>
           </div>
-          <div className="mt-8 flex justify-center">
-            <Button asChild className="w-full">
-              <Link href={PORTAL_PATH[me.active_role] ?? "/"}>
-                Open {me.active_role} portal
-              </Link>
-            </Button>
+          <div className="mt-8 flex flex-col gap-3">
+            {me.roles.map((role) => (
+              <Button key={role} asChild className="w-full">
+                <Link href={PORTAL_PATH[role] ?? "/"}>
+                  Open {role} portal
+                </Link>
+              </Button>
+            ))}
           </div>
         </Card>
       </div>

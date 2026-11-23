@@ -271,4 +271,83 @@ class DoctorDashboardView(APIView):
             'recent_prescriptions': recent_rx,
             'recent_patients': recent_patients,
         })
+class PharmacyDashboardView(APIView):
+    permission_classes = [IsPharmacy]
+
+    def get(self, request):
+        profile = request.user.pharmacy_profile
+        now = timezone.now()
+        today = now.date()
+        soon = today + timedelta(days=30)
+
+        # New requests: shares not yet quoted
+        from prescriptions.models import PrescriptionShare, PrescriptionStatus
+        from quotations.models import Quotation, QuotationStatus
+        shares = (PrescriptionShare.objects
+                  .filter(revoked_at__isnull=True, expires_at__gt=now)
+                  .filter(pharmacy=profile) | PrescriptionShare.objects
+                  .filter(revoked_at__isnull=True, expires_at__gt=now,
+                          pharmacy__isnull=True))
+        shares = shares.distinct()
+        new_requests = 0
+        recent_requests = []
+        for share in shares[:10]:
+            rx = share.prescription
+            if rx.status != PrescriptionStatus.FINALIZED:
+                continue
+            existing = Quotation.objects.filter(prescription=rx, pharmacy=profile).first()
+            if existing is None:
+                new_requests += 1
+            recent_requests.append({
+                'share_id': share.id,
+                'prescription_id': rx.id,
+                'opened': share.opened_at is not None if hasattr(share, 'opened_at') else False,
+                'expires_at': share.expires_at.isoformat(),
+            })
+
+        # Quotations awaiting decision
+        awaiting = Quotation.objects.filter(
+            pharmacy=profile,
+            status__in=[QuotationStatus.SUBMITTED, QuotationStatus.VIEWED]
+        ).count()
+
+        # Pending fulfillments
+        from orders.models import OrderFulfillment, FulfillmentStatus
+        pending_fulfillments = OrderFulfillment.objects.filter(
+            pharmacy=profile, status=FulfillmentStatus.PENDING).count()
+
+        # Low stock
+        from inventory.models import InventoryItem
+        low_stock = 0
+        for item in profile.inventory_items.all():
+            if item.available_qty < 10:
+                low_stock += 1
+
+        # Expiring in 30 days
+        expiring = 0
+        for item in profile.inventory_items.prefetch_related('batches').all():
+            for b in item.batches.all():
+                if b.expiry_date <= soon and b.expiry_date >= today:
+                    expiring += 1
+
+        # Recent orders
+        recent_orders = []
+        for f in OrderFulfillment.objects.filter(pharmacy=profile).order_by('-created_at')[:5]:
+            recent_orders.append({
+                'id': f.order_id,
+                'status': f.status,
+                'subtotal': str(f.subtotal),
+                'created_at': f.created_at.isoformat(),
+            })
+
+        return Response({
+            'new_requests': new_requests,
+            'quotations_awaiting': awaiting,
+            'orders_to_fulfill': pending_fulfillments,
+            'low_stock': low_stock,
+            'expiring_soon': expiring,
+            'recent_requests': recent_requests[:5],
+            'recent_orders': recent_orders,
+        })
+
 
