@@ -1,16 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 
 const PORTAL_PATH: Record<string, string> = {
   doctor: "/doctor",
   patient: "/patient",
   pharmacy: "/pharmacy",
+  admin: "/admin",
 };
 
 export default function LoginPage() {
@@ -31,54 +33,83 @@ export default function LoginPage() {
       });
       router.push(PORTAL_PATH[me.active_role] ?? "/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <main className="flex h-screen items-center justify-center bg-bg px-4">
-      <Card className="w-full max-w-md shadow-md">
-        <div className="flex flex-col items-center gap-1 mb-8">
-          <h2 className="text-2xl font-bold tracking-tight text-ink">Sign in</h2>
-          <p className="text-sm text-ink-secondary">Welcome back to MediRelay</p>
-        </div>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-subtle)] px-4 py-12 font-sans selection:bg-[var(--accent-subtle)]">
+      {/* Brand Mark */}
+      <Link href="/" className="mb-8 flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] bg-[var(--accent)] text-white font-bold text-sm shadow-xs">
+          M
+        </span>
+        <span className="text-xl font-bold tracking-tight text-[var(--text)]">
+          MediRelay
+        </span>
+      </Link>
+
+      <Card elevated className="w-full max-w-md border border-[var(--border)] bg-[var(--bg-elevated)] p-8">
+        <CardHeader className="text-center mb-6">
+          <CardTitle as="h2" className="text-2xl">
+            Sign in
+          </CardTitle>
+          <CardDescription className="text-xs mt-1">
+            Access your secure healthcare workspace
+          </CardDescription>
+        </CardHeader>
+
         <form onSubmit={submit} className="space-y-4">
           {error && (
-            <div className="rounded-lg bg-danger/10 px-4 py-3 text-sm text-danger border border-danger/20">
-              {error}
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] px-4 py-3 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20 flex items-center gap-2"
+            >
+              <span>⚠</span>
+              <span>{error}</span>
             </div>
           )}
+
           <Input
-            label="Email"
+            label="Email Address"
             type="email"
             required
+            autoComplete="email"
+            placeholder="name@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
+
           <Input
             label="Password"
             type="password"
             required
+            autoComplete="current-password"
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <Button type="submit" className="w-full" loading={busy}>
-            Sign in
-          </Button>
+
+          <div className="pt-2">
+            <Button type="submit" pill size="lg" className="w-full" loading={busy}>
+              Sign in to MediRelay
+            </Button>
+          </div>
         </form>
-        <p className="mt-8 text-center text-sm text-ink-secondary">
+
+        <div className="mt-8 border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--text-secondary)]">
           Don&apos;t have an account?{" "}
-          <a
+          <Link
             href="/register"
-            className="font-medium text-accent hover:text-accent-hover"
+            className="font-semibold text-[var(--accent)] hover:underline"
           >
-            Create one
-          </a>
-        </p>
+            Create an account
+          </Link>
+        </div>
       </Card>
     </main>
   );
 }
-

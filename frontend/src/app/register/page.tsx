@@ -1,24 +1,26 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 const PORTAL_PATH: Record<string, string> = {
   doctor: "/doctor",
   patient: "/patient",
   pharmacy: "/pharmacy",
+  admin: "/admin",
 };
 
 type Role = "patient" | "doctor" | "pharmacy";
 
-const ROLE_CHOICES: [Role, string][] = [
-  ["patient", "Patient"],
-  ["doctor", "Doctor"],
-  ["pharmacy", "Pharmacy"],
+const ROLE_CHOICES: { id: Role; label: string; desc: string }[] = [
+  { id: "patient", label: "Patient", desc: "Compare & order" },
+  { id: "doctor", label: "Doctor", desc: "Prescribe & sign" },
+  { id: "pharmacy", label: "Pharmacy", desc: "Quote & dispense" },
 ];
 
 export default function RegisterPage() {
@@ -37,7 +39,7 @@ export default function RegisterPage() {
     setBusy(true);
     setError("");
     try {
-      await api<Me>("/auth/register", {
+      const me = await api<Me>("/auth/register", {
         method: "POST",
         body: {
           role,
@@ -48,7 +50,7 @@ export default function RegisterPage() {
           ...(role === "pharmacy" ? { pharmacy_name: pharmacyName } : {}),
         },
       });
-      router.push(PORTAL_PATH[role] ?? "/");
+      router.push(PORTAL_PATH[me?.active_role || role] ?? "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -57,85 +59,142 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex h-screen items-center justify-center bg-bg px-4">
-      <Card className="w-full max-w-md shadow-md">
-        <div className="flex flex-col items-center gap-1 mb-8">
-          <h2 className="text-2xl font-bold tracking-tight text-ink">Create account</h2>
-          <p className="text-sm text-ink-secondary">Join MediRelay</p>
-        </div>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-[var(--bg-subtle)] px-4 py-12 font-sans selection:bg-[var(--accent-subtle)]">
+      {/* Brand Mark */}
+      <Link href="/" className="mb-8 flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-[var(--r-md)] bg-[var(--accent)] text-white font-bold text-sm shadow-xs">
+          M
+        </span>
+        <span className="text-xl font-bold tracking-tight text-[var(--text)]">
+          MediRelay
+        </span>
+      </Link>
+
+      <Card elevated className="w-full max-w-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-8">
+        <CardHeader className="text-center mb-6">
+          <CardTitle as="h2" className="text-2xl">
+            Create an Account
+          </CardTitle>
+          <CardDescription className="text-xs mt-1">
+            Join the connected clinical healthcare network
+          </CardDescription>
+        </CardHeader>
+
         <form onSubmit={submit} className="space-y-4">
           {error && (
-            <div className="rounded-lg bg-danger/10 px-4 py-3 text-sm text-danger border border-danger/20">
-              {error}
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] px-4 py-3 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20 flex items-center gap-2"
+            >
+              <span>⚠</span>
+              <span>{error}</span>
             </div>
           )}
-          <div className="grid grid-cols-3 gap-3">
-            {ROLE_CHOICES.map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setRole(value as Role)}
-                className={`tap-interactive flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-sm transition-colors ${
-                  role === value
-                    ? "bg-accent/10 border-accent text-accent"
-                    : "bg-bg-elevated border-border text-ink-secondary hover:border-accent hover:text-accent"
-                }`}
-              >
-                <span>{label}</span>
-              </button>
-            ))}
+
+          {/* Role Segmented Cards */}
+          <div>
+            <label className="block text-xs font-semibold tracking-tight text-[var(--text)] mb-2">
+              Select Primary Role
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {ROLE_CHOICES.map((choice) => {
+                const isSelected = role === choice.id;
+                return (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    onClick={() => setRole(choice.id)}
+                    className={`tap-interactive flex flex-col items-center justify-center rounded-[var(--r-lg)] p-3 text-center border transition-all ${
+                      isSelected
+                        ? "border-[var(--accent)] bg-[var(--accent-subtle)] text-[var(--accent)] shadow-2xs font-semibold ring-1 ring-[var(--accent)]/30"
+                        : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text)]"
+                    }`}
+                  >
+                    <span className="text-xs font-bold">{choice.label}</span>
+                    <span className="text-[10px] text-[var(--text-tertiary)] mt-0.5">
+                      {choice.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
           <Input
-            label="Full name"
+            label="Full Name / Primary Contact"
             required
+            placeholder={
+              role === "doctor"
+                ? "e.g. Dr. Sarah Jenkins"
+                : role === "pharmacy"
+                ? "e.g. Rajiv Mehra"
+                : "e.g. Rahul Sharma"
+            }
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
           />
-          <Input
-            label="Email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+
           {role === "doctor" && (
             <Input
-              label="Registration number"
-              placeholder="e.g. MH-12345"
+              label="Medical Registration Number *"
+              required
+              placeholder="e.g. MCI-2018-98432 or MH-54321"
+              hint="Required by State Medical Council / NMC for clinical signing"
               value={regNumber}
               onChange={(e) => setRegNumber(e.target.value)}
             />
           )}
+
           {role === "pharmacy" && (
             <Input
-              label="Pharmacy name"
+              label="Pharmacy Store Name *"
+              required
+              placeholder="e.g. Apollo Pharmacy #14"
+              hint="Registered drug license dispensing name"
               value={pharmacyName}
               onChange={(e) => setPharmacyName(e.target.value)}
             />
           )}
+
+          <Input
+            label="Email Address"
+            type="email"
+            required
+            autoComplete="email"
+            placeholder="name@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+
           <Input
             label="Password"
             type="password"
             required
             minLength={8}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <Button type="submit" className="w-full" loading={busy}>
-            Create account
-          </Button>
+
+          <div className="pt-2">
+            <Button type="submit" pill size="lg" className="w-full" loading={busy}>
+              Create {role.charAt(0).toUpperCase() + role.slice(1)} Account
+            </Button>
+          </div>
         </form>
-        <p className="mt-8 text-center text-sm text-ink-secondary">
-          Already registered?{" "}
-          <a
+
+        <div className="mt-8 border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--text-secondary)]">
+          Already have an account?{" "}
+          <Link
             href="/login"
-            className="font-medium text-accent hover:text-accent-hover"
+            className="font-semibold text-[var(--accent)] hover:underline"
           >
             Sign in
-          </a>
-        </p>
+          </Link>
+        </div>
       </Card>
     </main>
   );
 }
-

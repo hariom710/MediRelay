@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import Shell from "@/components/shell";
 
 interface Queue {
@@ -18,6 +17,7 @@ interface Queue {
 export default function AdminPortal() {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     api<Queue>("/admin/verifications?status=pending")
@@ -26,21 +26,28 @@ export default function AdminPortal() {
   }, []);
 
   async function decide(profileType: "doctor" | "pharmacy", id: number) {
-    await api(`/admin/verifications/${profileType}/${id}`, {
-      method: "POST",
-      body: { decision: "approve" },
-    });
-    setQueue((q) =>
-      q
-        ? {
-            ...q,
-            [profileType === "doctor" ? "doctors" : "pharmacies"]:
-              (profileType === "doctor" ? q.doctors : q.pharmacies).filter(
-                (d) => d.id !== id,
-              ),
-          }
-        : q,
-    );
+    setBusyId(`${profileType}-${id}`);
+    try {
+      await api(`/admin/verifications/${profileType}/${id}`, {
+        method: "POST",
+        body: { decision: "approve" },
+      });
+      setQueue((q) =>
+        q
+          ? {
+              ...q,
+              [profileType === "doctor" ? "doctors" : "pharmacies"]:
+                (profileType === "doctor" ? q.doctors : q.pharmacies).filter(
+                  (d) => d.id !== id
+                ),
+            }
+          : q
+      );
+    } catch (e) {
+      if (e instanceof Error) setError(e.message);
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const doctors = queue?.doctors ?? [];
@@ -48,86 +55,113 @@ export default function AdminPortal() {
 
   return (
     <Shell role="admin">
-      <div className="max-w-4xl">
-        <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">Verification queue</h1>
-        <p className="text-sm text-ink-secondary mb-8">
-          Review and approve new doctor and pharmacy accounts.
-        </p>
+      <div className="max-w-5xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="type-h1 text-[var(--text)]">Credential Verification Queue</h1>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Validate State Medical Council registrations and retail drug licenses before permitting clinical actions.
+            </p>
+          </div>
+          <Badge variant="neutral" size="md">
+            Admin Authority Active
+          </Badge>
+        </div>
 
         {error && (
-          <Card className="mb-6">
-            <CardContent className="p-4">
-              <p className="text-sm text-danger">{error}</p>
-            </CardContent>
-          </Card>
+          <div
+            role="alert"
+            className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] p-4 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20"
+          >
+            {error}
+          </div>
         )}
 
         {queue === null && !error && (
-          <div className="h-48 flex items-center justify-center rounded-lg bg-bg-elevated text-ink-secondary">
-            Loading…
+          <div className="grid sm:grid-cols-2 gap-6">
+            <Skeleton className="h-64 rounded-[var(--r-2xl)]" />
+            <Skeleton className="h-64 rounded-[var(--r-2xl)]" />
           </div>
         )}
 
         {queue && doctors.length === 0 && pharmacies.length === 0 && (
-          <Card className="mb-6">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-ink-secondary">Nothing pending.</p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="Verification Queue Clear"
+            description="All registered doctors and retail pharmacies have been reviewed and approved. New registrations will automatically appear here."
+          />
         )}
 
         {queue && (doctors.length > 0 || pharmacies.length > 0) && (
-          <div className="grid lg:grid-cols-2 gap-8">
+          <div className="grid lg:grid-cols-2 gap-6">
             {doctors.length > 0 && (
-              <Card>
-                <CardHeader className="pb-4 border-b border-border">
-                  <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-wider">
-                    Doctors ({doctors.length})
-                  </h2>
-                </CardHeader>
-                <ul className="divide-y divide-border">
+              <Card elevated className="border border-[var(--border)] p-0 overflow-hidden">
+                <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-subtle)] flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                    Pending Doctors
+                  </span>
+                  <Badge variant="finalized" size="sm">
+                    {doctors.length} Pending
+                  </Badge>
+                </div>
+                <ul className="divide-y divide-[var(--border)]">
                   {doctors.map((d) => (
-                    <li key={d.id} className="px-6 py-4 flex justify-between items-center">
+                    <li
+                      key={d.id}
+                      className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-[var(--bg-subtle)]/40 transition-colors"
+                    >
                       <div>
-                        <p className="font-medium text-ink">Dr. {d.name}</p>
-                        <p className="text-xs text-ink-secondary">
-                          {d.registration_number}
+                        <p className="font-bold text-sm text-[var(--text)]">
+                          Dr. {d.name}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)] font-mono mt-0.5">
+                          Reg: {d.registration_number || "Pending"}
                         </p>
                       </div>
                       <Button
-                        variant="secondary"
                         size="sm"
+                        pill
+                        loading={busyId === `doctor-${d.id}`}
                         onClick={() => decide("doctor", d.id)}
                       >
-                        Approve
+                        Approve License
                       </Button>
                     </li>
                   ))}
                 </ul>
               </Card>
             )}
+
             {pharmacies.length > 0 && (
-              <Card>
-                <CardHeader className="pb-4 border-b border-border">
-                  <h2 className="text-sm font-semibold text-ink-secondary uppercase tracking-wider">
-                    Pharmacies ({pharmacies.length})
-                  </h2>
-                </CardHeader>
-                <ul className="divide-y divide-border">
+              <Card elevated className="border border-[var(--border)] p-0 overflow-hidden">
+                <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-subtle)] flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                    Pending Pharmacies
+                  </span>
+                  <Badge variant="warning" size="sm">
+                    {pharmacies.length} Pending
+                  </Badge>
+                </div>
+                <ul className="divide-y divide-[var(--border)]">
                   {pharmacies.map((p) => (
-                    <li key={p.id} className="px-6 py-4 flex justify-between items-center">
+                    <li
+                      key={p.id}
+                      className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-[var(--bg-subtle)]/40 transition-colors"
+                    >
                       <div>
-                        <p className="font-medium text-ink">{p.name}</p>
-                        <p className="text-xs text-ink-secondary">
-                          {p.license_number}
+                        <p className="font-bold text-sm text-[var(--text)]">
+                          {p.name}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)] font-mono mt-0.5">
+                          Drug Lic: {p.license_number || "Pending"}
                         </p>
                       </div>
                       <Button
-                        variant="secondary"
                         size="sm"
+                        pill
+                        loading={busyId === `pharmacy-${p.id}`}
                         onClick={() => decide("pharmacy", p.id)}
                       >
-                        Approve
+                        Approve License
                       </Button>
                     </li>
                   ))}
@@ -140,4 +174,3 @@ export default function AdminPortal() {
     </Shell>
   );
 }
-

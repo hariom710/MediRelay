@@ -123,19 +123,22 @@ export default function PrescriptionDetail({ params }: { params: { id: string } 
               v{rx.version} · {rx.patient_name} · {rx.consultation_date}
             </p>
           </div>
-          <div className="flex gap-3">
-            <Link href={`/prescriptions/${rx.id}/pdf`} target="_blank" rel="noopener noreferrer">
-              <Button>Download PDF</Button>
-            </Link>
+          <div className="flex flex-wrap gap-2.5">
+            <a href={`/api/v1/prescriptions/${rx.id}/pdf`} target="_blank" rel="noopener noreferrer">
+              <Button variant="secondary" size="sm">Download PDF</Button>
+            </a>
             {rx.status === "draft" && (
-              <Button onClick={handleFinalize} loading={busy} disabled={busy}>
+              <Button size="sm" onClick={handleFinalize} loading={busy} disabled={busy}>
                 Finalize
               </Button>
             )}
             {rx.status === "finalized" && (
               <>
-                <Button variant="secondary" onClick={handleRevise}>Revise</Button>
-                <Button variant="danger" onClick={handleCancel}>Cancel</Button>
+                <Link href={`/doctor/prescriptions/${rx.id}/share`}>
+                  <Button variant="secondary" size="sm">Share Link</Button>
+                </Link>
+                <Button variant="secondary" size="sm" onClick={handleRevise}>Revise</Button>
+                <Button variant="danger" size="sm" onClick={handleCancel}>Cancel</Button>
               </>
             )}
           </div>

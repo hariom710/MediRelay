@@ -16,38 +16,58 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
     | "expired"
     | "revoked"
     | "cancelled";
+  size?: "sm" | "md";
 }
 
 export function Badge({
   className,
   variant = "default",
+  size = "md",
   children,
   ...props
 }: BadgeProps) {
   const variants: Record<string, string> = {
-    default: "bg-border text-ink-secondary border border-transparent",
-    success: "bg-success/10 text-success border border-success/20",
-    warning: "bg-warning/10 text-warning border border-warning/20",
-    danger: "bg-danger/10 text-danger border border-danger/20",
-    neutral: "bg-bg-elevated text-ink-secondary border border-border",
-    draft: "bg-bg-elevated text-status-draft border border-status-draft/30",
-    finalized: "bg-accent-muted text-accent border border-accent/30",
-    shared: "bg-green/10 text-green-600 border border-green/30",
-    expired: "bg-status-expired/10 text-status-expired border border-status-expired/30",
-    revoked: "bg-status-revoked/10 text-status-revoked border border-status-revoked/30",
-    cancelled: "bg-danger/10 text-danger border border-danger/30",
+    default:
+      "bg-[var(--bg-subtle)] text-[var(--text-secondary)] border-[var(--border)]",
+    neutral:
+      "bg-[var(--bg-subtle)] text-[var(--text)] border-[var(--border-strong)]",
+    success:
+      "bg-[var(--success-subtle)] text-[var(--success)] border-[var(--success)]/30",
+    warning:
+      "bg-[var(--warning-subtle)] text-[var(--warning)] border-[var(--warning)]/30",
+    danger:
+      "bg-[var(--danger-subtle)] text-[var(--danger)] border-[var(--danger)]/30",
+    draft:
+      "bg-[var(--bg-subtle)] text-[var(--status-draft)] border-[var(--border)]",
+    finalized:
+      "bg-[var(--accent-subtle)] text-[var(--accent)] border-[var(--accent)]/30",
+    shared:
+      "bg-[var(--success-subtle)] text-[var(--success)] border-[var(--success)]/30",
+    expired:
+      "bg-[var(--bg-subtle)] text-[var(--status-expired)] border-[var(--border)]",
+    revoked:
+      "bg-[var(--danger-subtle)] text-[var(--danger)] border-[var(--danger)]/30",
+    cancelled:
+      "bg-[var(--danger-subtle)] text-[var(--danger)] border-[var(--danger)]/30",
   };
+
+  const sizes = {
+    sm: "px-2 py-0.5 text-[10px]",
+    md: "px-2.5 py-0.5 text-xs",
+  };
+
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium",
-        variants[variant],
-        className,
+        "inline-flex items-center gap-1.5 rounded-full border font-medium tracking-tight uppercase select-none",
+        variants[variant] || variants.default,
+        sizes[size],
+        className
       )}
       {...props}
     >
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
       {children}
     </span>
   );
 }
-

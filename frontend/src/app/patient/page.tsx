@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import Shell from "@/components/shell";
 
 interface Order {
@@ -25,56 +29,83 @@ export default function PatientPortal() {
 
   return (
     <Shell role="patient">
-      <div className="max-w-4xl">
-        <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">My orders</h1>
-        <p className="text-sm text-ink-secondary mb-8">
-          Track your prescriptions and pharmacy orders.
-        </p>
+      <div className="max-w-4xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="type-h1 text-[var(--text)]">My Orders & Receipts</h1>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">
+              Track prescription fulfillment status, pharmacy receipts, and order histories.
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" pill asChild>
+            <Link href="/patient/prescriptions">
+              View Prescriptions →
+            </Link>
+          </Button>
+        </div>
 
         {error && (
-          <Card className="mb-6">
-            <CardContent className="p-4">
-              <p className="text-sm text-danger">{error}</p>
-            </CardContent>
-          </Card>
+          <div
+            role="alert"
+            className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] p-4 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20"
+          >
+            {error}
+          </div>
         )}
 
         {orders === null && !error && (
-          <div className="h-48 flex items-center justify-center rounded-lg bg-bg-elevated text-ink-secondary">
-            Loading…
+          <div className="space-y-3">
+            <Skeleton className="h-20 rounded-[var(--r-xl)]" />
+            <Skeleton className="h-20 rounded-[var(--r-xl)]" />
           </div>
         )}
 
         {orders && orders.length === 0 && (
-          <Card className="mb-6">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-ink-secondary">No orders yet.</p>
-              <p className="text-xs text-ink-tertiary mt-2">
-                Ask your doctor to share a prescription, then compare prices.
-              </p>
-            </CardContent>
-          </Card>
+          <EmptyState
+            title="No Orders Placed Yet"
+            description="When you accept a quotation on one of your prescriptions, your order and tax receipt will appear here."
+            action={
+              <Button size="sm" pill asChild>
+                <Link href="/patient/prescriptions">Browse Prescriptions</Link>
+              </Button>
+            }
+          />
         )}
 
         {orders && orders.length > 0 && (
-          <Card className="overflow-hidden">
-            <ul className="divide-y divide-border">
+          <Card elevated className="overflow-hidden border border-[var(--border)] p-0">
+            <div className="px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-secondary)]">
+              Order Ledger
+            </div>
+            <ul className="divide-y divide-[var(--border)]">
               {orders.map((o) => (
-                <li key={o.id} className="px-6 py-4 flex justify-between items-center">
+                <li
+                  key={o.id}
+                  className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[var(--bg-subtle)]/40 transition-colors"
+                >
                   <div>
-                    <p className="font-medium text-ink">Order #{o.id}</p>
-                    <p className="text-xs text-ink-secondary">
-                      Prescription RX-{o.prescription}
+                    <p className="font-bold text-sm text-[var(--text)]">
+                      Order #{o.id}
+                    </p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                      Fulfilling Prescription RX-{o.prescription}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge
-                      variant={o.status === "completed" ? "success" : "neutral"}
-                      className="px-2 py-1"
+                      variant={
+                        o.status === "completed" || o.status === "fulfilled"
+                          ? "success"
+                          : o.status === "cancelled"
+                          ? "cancelled"
+                          : "neutral"
+                      }
                     >
                       {o.status.charAt(0).toUpperCase() + o.status.slice(1)}
                     </Badge>
-                    <span className="font-medium text-ink">₹{o.total}</span>
+                    <span className="font-mono font-bold text-sm text-[var(--text)]">
+                      ₹{o.total}
+                    </span>
                   </div>
                 </li>
               ))}
@@ -85,4 +116,3 @@ export default function PatientPortal() {
     </Shell>
   );
 }
-

@@ -1,83 +1,284 @@
 @import "tailwindcss";
 
 /*
- * MediRelay — Doctor portal design system
- * Flat, calm, clinical, high contrast.
- * No glassmorphism, no gradients, no blur, no dark mode, no emoji, no decorative animation.
- * Tokens defined here once; reused everywhere via Tailwind arbitrary values / CSS vars.
+ * MediRelay — Apple Human Interface Guidelines (HIG) Design System
+ * Clarity · Hierarchy · Craft · Direct Manipulation · Fluid Motion
+ * Tokens, typography, fluid scales, materials, and motion primitives.
  */
 
-@theme {
-  /* Neutral foundation */
-  --color-bg: #ffffff;
-  --color-bg-elevated: #f5f5f7;
-  --color-ink: #1d1d1f;
-  --color-ink-secondary: #86868b;
-  --color-ink-tertiary: #aeaeb2;
+:root {
+  /* Neutrals: 90% surface area foundation */
+  --bg: #ffffff;
+  --bg-subtle: #f5f5f7;
+  --bg-elevated: #ffffff;
+  --border: #e8e8ed;
+  --border-strong: #d2d2d7;
+  --text: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #86868b;
+  --inverse: #ffffff;
 
-  /* Borders */
-  --color-border: #d4d4d8;
-  --color-border-focus: #0071e3;
+  /* Brand Accent: Clinical Sapphire */
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --accent-contrast: #ffffff;
+  --accent-subtle: #f0f7ff;
+  --accent-tint: rgba(0, 113, 227, 0.08);
 
-  /* Single accent colour */
-  --color-accent: #0071e3;
-  --color-accent-hover: #0077ed;
-  --color-accent-muted: #e6f0ff;
+  /* Semantic palette */
+  --success: #34c759;
+  --success-subtle: #edf9f0;
+  --warning: #ff9500;
+  --warning-subtle: #fff7eb;
+  --danger: #ff3b30;
+  --danger-subtle: #feedec;
 
-  /* Status palette */
-  --color-status-draft: #86868b;
-  --color-status-finalized: #0071e3;
-  --color-status-shared: #34c759;
-  --color-status-expired: #86868b;
-  --color-status-revoked: #86868b;
-  --color-status-cancelled: #ff3b30;
-  --color-success: #34c759;
-  --color-danger: #ff3b30;
-  --color-warning: #ff9500;
+  /* Status Tokens */
+  --status-draft: #86868b;
+  --status-finalized: #0071e3;
+  --status-shared: #34c759;
+  --status-cancelled: #ff3b30;
+  --status-expired: #86868b;
 
-  /* Radius system (intentional, not excessive) */
-  --radius-sm: 6px;
-  --radius: 8px;       /* inputs, small buttons */
-  --radius-md: 12px;   /* cards */
-  --radius-lg: 16px;   /* prominent surfaces */
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+
+  /* Space scale (4px base) */
+  --s-1: 4px;   --s-2: 8px;   --s-3: 12px;  --s-4: 16px;  --s-5: 20px;
+  --s-6: 24px;  --s-8: 32px;  --s-10: 40px; --s-12: 48px;
+  --s-16: 64px; --s-20: 80px; --s-24: 96px; --s-32: 128px;
+
+  /* Radius Discipline */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 10px;  /* buttons & inputs */
+  --r-lg: 14px;
+  --r-xl: 18px;  /* small cards */
+  --r-2xl: 22px; /* main feature cards */
+  --r-3xl: 28px; /* hero cards */
+  --r-pill: 9999px;
+
+  /* Multi-layer elevation shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 20px -6px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px -8px rgba(0, 0, 0, 0.10), 0 24px 56px -24px rgba(0, 0, 0, 0.14);
+  --shadow-xl: 0 32px 80px -24px rgba(0, 0, 0, 0.18);
+
+  /* Motion Curves */
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --dur-instant: 100ms;
+  --dur-fast: 160ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+  --dur-surface: 420ms;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0d;
+    --bg-subtle: #161618;
+    --bg-elevated: #1c1c1e;
+    --border: #2c2c2e;
+    --border-strong: #3a3a3c;
+    --text: #f5f5f7;
+    --text-secondary: #a1a1a6;
+    --text-tertiary: #6e6e73;
+    --inverse: #0b0b0d;
+
+    --accent: #2997ff;
+    --accent-hover: #0077ed;
+    --accent-contrast: #ffffff;
+    --accent-subtle: #0d2238;
+    --accent-tint: rgba(41, 151, 255, 0.12);
+
+    --success: #32d74b;
+    --success-subtle: #0f2915;
+    --warning: #ff9f0a;
+    --warning-subtle: #2b1d07;
+    --danger: #ff453a;
+    --danger-subtle: #2b1210;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 12px 36px rgba(0, 0, 0, 0.6);
+  }
+}
+
+@theme {
+  --color-bg: var(--bg);
+  --color-bg-subtle: var(--bg-subtle);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--text);
+  --color-ink-secondary: var(--text-secondary);
+  --color-ink-tertiary: var(--text-tertiary);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+  --radius-3xl: var(--r-3xl);
+  --radius-pill: var(--r-pill);
+}
+
+/* Base resets & typography */
 body {
-  background: var(--color-bg);
-  color: var(--color-ink);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
-    Helvetica, Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
+  margin: 0;
 }
 
-/* Tactile press feedback only — no decorative animation */
+/* Apple Functional Glass material with graceful fallbacks */
+.glass {
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background: var(--bg-elevated);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background: var(--bg-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .glass {
+    background: var(--bg-elevated);
+    border-color: var(--border-strong);
+  }
+}
+
+/* Direct Manipulation & Tactile Press Feedback */
 .tap-interactive {
-  transition: background-color 0.1s ease, opacity 0.1s ease;
-}
-.tap-interactive:active {
-  opacity: 0.85;
+  transition: transform var(--dur-instant) var(--ease-out),
+              background-color var(--dur-fast) ease,
+              border-color var(--dur-fast) ease,
+              box-shadow var(--dur-fast) ease;
 }
 
-/* Focus-visible for keyboard navigation */
+.tap-interactive:active:not(:disabled) {
+  transform: scale(0.975);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tap-interactive:active {
+    transform: none;
+  }
+}
+
+/* Focus rings with 3:1 accessible contrast */
 .focus-visible-ring:focus-visible {
-  outline: 2px solid var(--color-border-focus);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* Subtle page entrance — fade only */
-.fade-in {
-  animation: fadeIn 0.35s ease-out both;
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Fluid Typographic Scales */
+.type-display {
+  font-size: clamp(2.5rem, 1.6rem + 4.5vw, 4.25rem);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  line-height: 1.05;
 }
 
-/* Reduced motion */
+.type-h1 {
+  font-size: clamp(2rem, 1.4rem + 2.8vw, 3.25rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.type-h2 {
+  font-size: clamp(1.5rem, 1.2rem + 1.5vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+
+.type-h3 {
+  font-size: clamp(1.125rem, 1rem + 0.6vw, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.type-body-lg {
+  font-size: 1.125rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+}
+
+.type-body {
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: -0.008em;
+  line-height: 1.5;
+}
+
+.type-small {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.type-caption {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+}
+
+/* Entrance Animations */
+.fade-in {
+  animation: appleFadeIn var(--dur-base) var(--ease-out) both;
+}
+
+@keyframes appleFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .tap-interactive { transition: none; }
-  .fade-in { animation: none; opacity: 1; }
+  .fade-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }
