@@ -1,5 +1,7 @@
 from django.contrib.auth import login, logout
 from django.db import transaction
+from django.utils import timezone
+from datetime import timedelta
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -11,7 +13,9 @@ from config.throttles import LoginEmailThrottle, LoginThrottle, RegisterThrottle
 from .models import DoctorProfile, PatientProfile, PharmacyProfile, Role, User
 from .permissions import IsAdminRole, IsDoctor, IsPatient, IsPharmacy
 from .serializers import (DoctorProfileSerializer, PatientProfileSerializer,
-                          PharmacyProfileSerializer, RegisterSerializer, UserSerializer)
+                          PharmacyProfileSerializer, RegisterSerializer, UserSerializer, ChangePasswordSerializer)
+from prescriptions.models import Prescription, PrescriptionStatus, PrescriptionShare
+from prescriptions.serializers import PrescriptionSerializer
 
 
 class RegisterView(APIView):
@@ -119,6 +123,20 @@ class LogoutView(APIView):
         return Response({'detail': 'Logged out.'})
 
 
+class ChangePasswordView(APIView):
+    def post(self, request):
+        ser = ChangePasswordSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user = request.user
+        if not user.check_password(ser.validated_data['old_password']):
+            return Response({'detail': 'Current password is incorrect.',
+                             'code': 'invalid_password'}, status=400)
+        user.set_password(ser.validated_data['new_password'])
+        user.save()
+        record(request.user, 'user.change_password', 'user', user.id, {}, request)
+        return Response({'detail': 'Password changed.'})
+
+
 class MeView(APIView):
     def get(self, request):
         return Response(UserSerializer(request.user).data)
@@ -216,3 +234,41 @@ class VerificationDecisionView(APIView):
         record(request.user, 'account.verify', profile_type, profile.id,
                {'decision': decision}, request)
         return Response({'id': profile.id, 'verification_status': profile.verification_status})
+
+class DoctorDashboardView(APIView):
+    permission_classes = [IsDoctor]
+
+    def get(self, request):
+        doctor = request.user.doctor_profile
+        rx_qs = Prescription.objects.filter(doctor=doctor)
+        today = timezone.now().date()
+        seven_days = today + timedelta(days=7)
+        drafts = rx_qs.filter(status=PrescriptionStatus.DRAFT).count()
+        finalized_not_shared = (rx_qs.filter(status=PrescriptionStatus.FINALIZED)
+                                .exclude(shares__isnull=False).distinct().count())
+        active_shares = (PrescriptionShare.objects
+                         .filter(prescription__doctor=doctor, revoked_at__isnull=True,
+                                 expires_at__gte=timezone.now())
+                         .count())
+        expiring_soon = (rx_qs.filter(status=PrescriptionStatus.FINALIZED,
+                                      valid_until__lte=seven_days,
+                                      valid_until__gte=today).count())
+        recent_rx = PrescriptionSerializer(rx_qs.order_by('-created_at')[:5], many=True).data
+        patient_ids = rx_qs.values_list('patient_id', flat=True).distinct()[:5]
+        recent_patients = []
+        from accounts.models import PatientProfile
+        for p in PatientProfile.objects.filter(pk__in=patient_ids):
+            recent_patients.append({
+                'id': p.id,
+                'name': p.user.get_full_name() or p.user.email,
+                'allergies': p.allergies,
+            })
+        return Response({
+            'drafts': drafts,
+            'finalized_not_shared': finalized_not_shared,
+            'active_shares': active_shares,
+            'expiring_soon': expiring_soon,
+            'recent_prescriptions': recent_rx,
+            'recent_patients': recent_patients,
+        })
+

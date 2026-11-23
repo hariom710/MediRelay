@@ -23,23 +23,22 @@ export function Input({
       {label && (
         <label
           htmlFor={id}
-          className="mb-1.5 block text-sm font-medium text-ink-secondary"
+          className="mb-1.5 block text-sm font-semibold text-ink-secondary"
         >
           {label}
         </label>
       )}
       <div className="relative">
         {icon && (
-          <div className="absolute left-3.5 top-2.5 h-4 w-4 text-ink-secondary">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-tertiary">
             {icon}
           </div>
         )}
         <input
           id={id}
           className={cn(
-            "flex w-full rounded border border-border bg-bg-elevated px-4 py-2.5 text-ink placeholder:text-ink-tertiary focus:outline-none focus:ring-1 focus:ring-accent focus:border-transparent disabled:bg-gray-100 disabled:text-ink-secondary",
+            "flex w-full rounded border border-border bg-bg-elevated px-4 py-2.5 text-ink placeholder:text-ink-tertiary focus-visible-ring focus:ring-1 focus:ring-accent focus:border-transparent disabled:bg-gray-100 disabled:text-ink-secondary",
             icon ? "pl-10" : "",
-            "dark:disabled:bg-gray-900",
             className,
           )}
           {...props}
@@ -51,3 +50,42 @@ export function Input({
     </div>
   );
 }
+
+export interface TextareaProps
+  extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "prefix"> {
+  label?: string;
+  error?: string;
+}
+
+export function Textarea({
+  className,
+  label,
+  error,
+  id,
+  ...props
+}: TextareaProps) {
+  return (
+    <div className="w-full">
+      {label && (
+        <label
+          htmlFor={id}
+          className="mb-1.5 block text-sm font-semibold text-ink-secondary"
+        >
+          {label}
+        </label>
+      )}
+      <textarea
+        id={id}
+        className={cn(
+          "flex w-full rounded border border-border bg-bg-elevated px-4 py-2.5 text-ink placeholder:text-ink-tertiary focus-visible-ring focus:ring-1 focus:ring-accent focus:border-transparent disabled:bg-gray-100 disabled:text-ink-secondary",
+          className,
+        )}
+        {...props}
+      />
+      {error && (
+        <p className="mt-1.5 text-xs text-danger">{error}</p>
+      )}
+    </div>
+  );
+}
+

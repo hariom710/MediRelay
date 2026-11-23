@@ -1,123 +1,82 @@
 @import "tailwindcss";
 
+/*
+ * MediRelay — Doctor portal design system
+ * Flat, calm, clinical, high contrast.
+ * No glassmorphism, no gradients, no blur, no dark mode, no emoji, no decorative animation.
+ * Tokens defined here once; reused everywhere via Tailwind arbitrary values / CSS vars.
+ */
+
 @theme {
-  /* Apple-inspired neutral foundation */
-  --color-bg: #f5f5f7;
-  --color-bg-elevated: #ffffff;
+  /* Neutral foundation */
+  --color-bg: #ffffff;
+  --color-bg-elevated: #f5f5f7;
   --color-ink: #1d1d1f;
   --color-ink-secondary: #86868b;
   --color-ink-tertiary: #aeaeb2;
 
   /* Borders */
-  --color-border: rgba(0, 0, 0, 0.10);
-  --color-border-light: rgba(0, 0, 0, 0.06);
+  --color-border: #d4d4d8;
+  --color-border-focus: #0071e3;
 
-  /* Accents */
+  /* Single accent colour */
   --color-accent: #0071e3;
   --color-accent-hover: #0077ed;
+  --color-accent-muted: #e6f0ff;
+
+  /* Status palette */
+  --color-status-draft: #86868b;
+  --color-status-finalized: #0071e3;
+  --color-status-shared: #34c759;
+  --color-status-expired: #86868b;
+  --color-status-revoked: #86868b;
+  --color-status-cancelled: #ff3b30;
   --color-success: #34c759;
   --color-danger: #ff3b30;
   --color-warning: #ff9500;
 
-  /* Radius system (Apple: intentional, not excessive) */
-  --radius-sm: 8px;
-  --radius: 12px;      /* inputs, small buttons */
-  --radius-md: 18px;   /* cards */
-  --radius-lg: 26px;   /* prominent surfaces */
-  --radius-full: 9999px;
-
-  /* Shadows */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 10px 30px -6px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 20px 40px -8px rgba(0, 0, 0, 0.10);
-}
-
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-bg: #000000;
-    --color-bg-elevated: #1c1c1e;
-    --color-ink: #f5f5f7;
-    --color-ink-secondary: #86868b;
-    --color-ink-tertiary: #6e6e73;
-    --color-border: rgba(255, 255, 255, 0.14);
-    --color-border-light: rgba(255, 255, 255, 0.08);
-    --color-accent: #0a84ff;
-    --color-accent-hover: #329cff;
-  }
+  /* Radius system (intentional, not excessive) */
+  --radius-sm: 6px;
+  --radius: 8px;       /* inputs, small buttons */
+  --radius-md: 12px;   /* cards */
+  --radius-lg: 16px;   /* prominent surfaces */
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-ink);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
-    "Helvetica Neue", Helvetica, Arial, sans-serif;
-  letter-spacing: -0.015em;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    Helvetica, Arial, sans-serif;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
 }
 
-/* Glass panels — macOS / iOS material, used sparingly for hierarchy */
-.glass-panel {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: var(--shadow-sm);
-}
-
-@media (prefers-color-scheme: dark) {
-  .glass-panel {
-    background: rgba(28, 28, 30, 0.82);
-    border-color: rgba(255, 255, 255, 0.08);
-  }
-}
-
-/* Glass nav — sticky, translucent, one border */
-.glass-nav {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border-bottom: 1px solid var(--color-border);
-}
-
-@media (prefers-color-scheme: dark) {
-  .glass-nav {
-    background: rgba(16, 16, 17, 0.72);
-    border-bottom-color: rgba(255, 255, 255, 0.1);
-  }
-}
-
-/* Minimal, tactile interaction — no spring/physics animation */
+/* Tactile press feedback only — no decorative animation */
 .tap-interactive {
-  transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 0.12s ease;
+  transition: background-color 0.1s ease, opacity 0.1s ease;
 }
 .tap-interactive:active {
-  transform: scale(0.97);
+  opacity: 0.85;
 }
 
-/* Subtle page entrance — fade only, no motion */
+/* Focus-visible for keyboard navigation */
+.focus-visible-ring:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Subtle page entrance — fade only */
 .fade-in {
-  animation: fadeIn 0.5s ease-out both;
+  animation: fadeIn 0.35s ease-out both;
 }
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 999px;
-}
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); }
-}
-
-/* Reduced motion: honor OS preference */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .tap-interactive { transition: none; }
   .fade-in { animation: none; opacity: 1; }

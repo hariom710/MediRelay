@@ -6,7 +6,6 @@ import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Mail, Lock, User, Stethoscope, Building2 } from "lucide-react";
 
 const PORTAL_PATH: Record<string, string> = {
   doctor: "/doctor",
@@ -21,24 +20,6 @@ const ROLE_CHOICES: [Role, string][] = [
   ["doctor", "Doctor"],
   ["pharmacy", "Pharmacy"],
 ];
-
-const ROLE_LABELS: Record<Role, { label: string; desc: string; icon: React.ReactNode }> = {
-  patient: {
-    label: "Patient",
-    desc: "Receive prescriptions, compare pharmacy prices, order medicines.",
-    icon: <User className="h-5 w-5" />,
-  },
-  doctor: {
-    label: "Doctor",
-    desc: "Create digital prescriptions and share them securely with pharmacies.",
-    icon: <Stethoscope className="h-5 w-5" />,
-  },
-  pharmacy: {
-    label: "Pharmacy",
-    desc: "Quote availability and prices, fulfil orders, issue invoices.",
-    icon: <Building2 className="h-5 w-5" />,
-  },
-};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -77,11 +58,8 @@ export default function RegisterPage() {
 
   return (
     <main className="flex h-screen items-center justify-center bg-bg px-4">
-      <Card className="w-full max-w-md shadow-lg">
+      <Card className="w-full max-w-md shadow-md">
         <div className="flex flex-col items-center gap-1 mb-8">
-          <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-accent">M</span>
-          </div>
           <h2 className="text-2xl font-bold tracking-tight text-ink">Create account</h2>
           <p className="text-sm text-ink-secondary">Join MediRelay</p>
         </div>
@@ -97,13 +75,12 @@ export default function RegisterPage() {
                 key={value}
                 type="button"
                 onClick={() => setRole(value as Role)}
-                className={`tap-interactive flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-sm transition-colors ${
+                className={`tap-interactive flex flex-col items-center gap-1 rounded-xl border px-3 py-3 text-sm transition-colors ${
                   role === value
                     ? "bg-accent/10 border-accent text-accent"
                     : "bg-bg-elevated border-border text-ink-secondary hover:border-accent hover:text-accent"
                 }`}
               >
-                {ROLE_LABELS[value as Role].icon}
                 <span>{label}</span>
               </button>
             ))}
@@ -111,7 +88,6 @@ export default function RegisterPage() {
           <Input
             label="Full name"
             required
-            icon={<User className="h-4 w-4 text-ink-secondary" />}
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
           />
@@ -119,7 +95,6 @@ export default function RegisterPage() {
             label="Email"
             type="email"
             required
-            icon={<Mail className="h-4 w-4 text-ink-secondary" />}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -127,7 +102,6 @@ export default function RegisterPage() {
             <Input
               label="Registration number"
               placeholder="e.g. MH-12345"
-              icon={<Stethoscope className="h-4 w-4 text-ink-secondary" />}
               value={regNumber}
               onChange={(e) => setRegNumber(e.target.value)}
             />
@@ -135,7 +109,6 @@ export default function RegisterPage() {
           {role === "pharmacy" && (
             <Input
               label="Pharmacy name"
-              icon={<Building2 className="h-4 w-4 text-ink-secondary" />}
               value={pharmacyName}
               onChange={(e) => setPharmacyName(e.target.value)}
             />
@@ -145,7 +118,6 @@ export default function RegisterPage() {
             type="password"
             required
             minLength={8}
-            icon={<Lock className="h-4 w-4 text-ink-secondary" />}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -157,7 +129,7 @@ export default function RegisterPage() {
           Already registered?{" "}
           <a
             href="/login"
-            className="font-medium text-accent hover:text-accent-hover transition-colors"
+            className="font-medium text-accent hover:text-accent-hover"
           >
             Sign in
           </a>
@@ -166,3 +138,4 @@ export default function RegisterPage() {
     </main>
   );
 }
+

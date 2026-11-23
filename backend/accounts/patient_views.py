@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.contrib.auth import get_user_model
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -7,6 +8,8 @@ from audit.services import record
 from .models import PatientProfile, Role
 from .permissions import IsDoctor
 from .serializers import PatientProfileSerializer
+
+User = get_user_model()
 
 
 class PatientListCreateView(APIView):
@@ -100,3 +103,37 @@ class PatientDetailView(APIView):
         if user and user.email.startswith('patient-') and user.email.endswith('@medirelay.local'):
             user.delete()
         return Response({'detail': 'deleted'})
+
+    def patch(self, request, pk):
+        try:
+            p = PatientProfile.objects.get(pk=pk)
+        except PatientProfile.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        allowed = (p.created_by_id == request.user.id or
+                   p.prescriptions.filter(doctor=request.user.doctor_profile).exists())
+        if not allowed:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        data = request.data
+        user = p.user
+        user_dirty = False
+        if 'name' in data and data['name']:
+            user.first_name = str(data['name']).strip()
+            user_dirty = True
+        if 'phone' in data:
+            user.phone = data['phone'] or ''
+            user_dirty = True
+        if user_dirty:
+            user.save()
+        profile_dirty = False
+        for f in ('date_of_birth', 'gender', 'blood_group', 'allergies'):
+            if f in data:
+                setattr(p, f, data[f] or '')
+                profile_dirty = True
+        if profile_dirty:
+            p.save(update_fields=[f for f in ('date_of_birth', 'gender', 'blood_group',
+                                              'allergies') if f in data])
+        record(request.user, 'patient.update', 'patient', p.id, {}, request)
+        resp = PatientProfileSerializer(p).data
+        resp['name'] = user.get_full_name() or user.email
+        resp['phone'] = user.phone
+        return Response(resp)

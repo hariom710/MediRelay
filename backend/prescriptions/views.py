@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounts.models import Role
+from accounts.models import Role, VerificationStatus
 from accounts.permissions import IsDoctor
 from audit.models import PrescriptionAccessLog
 from audit.services import record
@@ -154,6 +154,12 @@ class PrescriptionFinalizeView(APIView):
     permission_classes = [IsDoctor]
 
     def post(self, request, pk):
+        doctor_profile = getattr(request.user, 'doctor_profile', None)
+        if (doctor_profile is None or
+                doctor_profile.verification_status != VerificationStatus.VERIFIED):
+            return Response(
+                {'detail': 'Your account is not verified. Finalizing prescriptions is blocked.',
+                 'code': 'doctor_not_verified'}, status=403)
         with transaction.atomic():
             try:
                 rx = Prescription.objects.select_for_update().get(pk=pk)
@@ -288,6 +294,13 @@ class ShareListCreateView(APIView):
         rx = self._get_owned(request, pk)
         if rx is None:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        from accounts.models import PharmacyProfile, VerificationStatus
+        doctor_profile = getattr(request.user, 'doctor_profile', None)
+        if (doctor_profile is None or
+                doctor_profile.verification_status != VerificationStatus.VERIFIED):
+            return Response(
+                {'detail': 'Your account is not verified. Sharing prescriptions is blocked.',
+                 'code': 'doctor_not_verified'}, status=403)
         if rx.status != PrescriptionStatus.FINALIZED:
             return Response({'detail': 'Only finalized prescriptions can be shared.',
                              'code': 'not_finalized'}, status=409)
@@ -347,8 +360,30 @@ class ShareRevokeView(APIView):
         return Response(ShareSerializer(share).data)
 
 
+class PrescriptionAccessLogListView(APIView):
+    """Doctor-facing access log: who opened a shared prescription and when."""
+
+    def get(self, request, pk):
+        try:
+            rx = Prescription.objects.get(pk=pk)
+        except Prescription.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if not _can_view(request.user, rx):
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        logs = (PrescriptionAccessLog.objects
+                .filter(share__prescription=rx)
+                .select_related('user')
+                .order_by('-accessed_at')[:100])
+        return Response([{
+            'id': l.id,
+            'user_id': l.user_id,
+            'user_email': l.user.email if l.user else None,
+            'role': l.role,
+            'accessed_at': l.accessed_at.isoformat(),
+        } for l in logs])
+
+
 class ShareTokenView(APIView):
-    """Pharmacy opens the link. Scoped view + access log. No patient history."""
     from config.throttles import ShareTokenThrottle
     throttle_classes = [ShareTokenThrottle]
 

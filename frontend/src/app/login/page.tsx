@@ -6,7 +6,6 @@ import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Mail, Lock, ChevronRight } from "lucide-react";
 
 const PORTAL_PATH: Record<string, string> = {
   doctor: "/doctor",
@@ -40,11 +39,8 @@ export default function LoginPage() {
 
   return (
     <main className="flex h-screen items-center justify-center bg-bg px-4">
-      <Card className="w-full max-w-md shadow-lg">
+      <Card className="w-full max-w-md shadow-md">
         <div className="flex flex-col items-center gap-1 mb-8">
-          <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-accent">M</span>
-          </div>
           <h2 className="text-2xl font-bold tracking-tight text-ink">Sign in</h2>
           <p className="text-sm text-ink-secondary">Welcome back to MediRelay</p>
         </div>
@@ -58,7 +54,6 @@ export default function LoginPage() {
             label="Email"
             type="email"
             required
-            icon={<Mail className="h-4 w-4 text-ink-secondary" />}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -66,23 +61,18 @@ export default function LoginPage() {
             label="Password"
             type="password"
             required
-            icon={<Lock className="h-4 w-4 text-ink-secondary" />}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <Button
-            type="submit"
-            className="w-full"
-            loading={busy}
-          >
-            Sign in <ChevronRight className="ml-2 h-4 w-4" />
+          <Button type="submit" className="w-full" loading={busy}>
+            Sign in
           </Button>
         </form>
         <p className="mt-8 text-center text-sm text-ink-secondary">
           Don&apos;t have an account?{" "}
           <a
             href="/register"
-            className="font-medium text-accent hover:text-accent-hover transition-colors"
+            className="font-medium text-accent hover:text-accent-hover"
           >
             Create one
           </a>
@@ -91,3 +81,4 @@ export default function LoginPage() {
     </main>
   );
 }
+
