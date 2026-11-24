@@ -7,6 +7,8 @@ IMPORTANT:
 - Override via environment variables in deployment.
 """
 
+import os
+
 from .settings import *  # noqa: F401, F403
 
 # === Debug ===
@@ -28,13 +30,13 @@ if (
         "Set the DJANGO_SECRET_KEY environment variable with a secure value."
     )
 
-# === CSRF trusted origins for production ===
-# Override the development defaults from settings.py.
-# In production, only HTTPS origins are allowed.
-CSRF_TRUSTED_ORIGINS = [
-    'https://medirelay.com',
-    'https://www.medirelay.com',
-]
+# === Hosts and origins ===
+# Deployment-specific: set both in the host's dashboard.
+# ALLOWED_HOSTS must include the backend hostname (e.g. xyz.onrender.com).
+# CSRF_TRUSTED_ORIGINS must include the browser-facing origin (e.g. https://xyz.vercel.app).
+_env_list = lambda key: [v.strip() for v in os.environ.get(key, '').split(',') if v.strip()]
+ALLOWED_HOSTS = _env_list('DJANGO_ALLOWED_HOSTS')
+CSRF_TRUSTED_ORIGINS = _env_list('DJANGO_CSRF_TRUSTED_ORIGINS')
 
 # === Security Settings ===
 # SECURITY: Enforce HTTPS-only cookies in production
@@ -43,7 +45,9 @@ CSRF_COOKIE_SECURE = True
 CSRF_COOKIE_HTTPONLY = True
 SESSION_COOKIE_HTTPONLY = True
 
-# SECURE_SSL_REDIRECT must reference SECRET_KEY-safe setting
+# Trust the reverse proxy's X-Forwarded-Proto, otherwise SECURE_SSL_REDIRECT
+# below loops forever (proxy speaks http, Django keeps redirecting to https).
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 SECURE_SSL_REDIRECT = not DEBUG
 
 # === Security Settings ===
@@ -52,23 +56,6 @@ SECURE_SSL_REDIRECT = not DEBUG
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
-
-# === Allowed Hosts ===
-# Add your production domain(s) here
-ALLOWED_HOSTS = [
-    'medirelay.com',
-    'www.medirelay.com',
-    'localhost',
-    '127.0.0.1',
-]
-
-# === CORS ===
-# In production, be explicit about allowed origins
-CORS_ALLOWED_ORIGINS = [
-    'https://medirelay.com',
-    'https://www.medirelay.com',
-    'https://medirelay.app',
-]
 
 # === REST Framework throttling ===
 # Production throttle rates (stricter than dev)
@@ -80,10 +67,8 @@ REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {
 }
 
 # === Note ===
-# The following should be set via environment variables in production:
-# - SECRET_KEY (must not be the development fallback key)
-# - DATABASE_URL (or override DATABASES entirely)
-# - EMAIL backend credentials
-# - CORS_ALLOWED_ORIGINS
-# - CSRF_TRUSTED_ORIGINS
-# - ALLOWED_HOSTS
+# Set these via environment variables in the deployment host:
+# - DJANGO_SECRET_KEY (must not be the development fallback key)
+# - DJANGO_ALLOWED_HOSTS, DJANGO_CSRF_TRUSTED_ORIGINS
+# - DATABASE_URL (PostgreSQL; defaults to SQLite when unset)
+# - DJANGO_NUM_PROXIES (2 behind Vercel -> Render)

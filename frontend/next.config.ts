@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
 
+// Server-side proxy target. Set API_PROXY_TARGET in the host's build env
+// (e.g. https://medirelay-api.onrender.com). Defaults to local dev.
+const API_PROXY_TARGET = process.env.API_PROXY_TARGET ?? "http://localhost:8000";
+
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
@@ -59,13 +63,13 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Proxy API calls to Django so the browser only ever talks to :3000
+  // Proxy API calls to Django so the browser only ever talks to one origin
   // (same-origin cookies -> no CORS config needed).
   async rewrites() {
     return [
       {
         source: "/api/:path*",
-        destination: "http://localhost:8000/api/:path*",
+        destination: `${API_PROXY_TARGET}/api/:path*`,
       },
     ];
   },

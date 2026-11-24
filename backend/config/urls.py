@@ -1,8 +1,17 @@
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import include, path
 
+
+def health(_request):
+    """Liveness probe for the platform's health check. Deliberately does not
+    touch the database: a Neon hiccup must not make the platform restart us."""
+    return JsonResponse({'status': 'ok'})
+
+
 urlpatterns = [
+    path('api/v1/health', health),
     path('api/v1/', include([
         path('', include('accounts.urls')),
         path('', include('audit.urls')),

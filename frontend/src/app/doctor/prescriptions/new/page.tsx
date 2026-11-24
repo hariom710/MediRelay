@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { type Patient, type Prescription } from "@/lib/types";
@@ -48,6 +48,17 @@ function computeQty(item: RxItem): number {
   return Math.round(qty);
 }
 
+// Client-only clock values: prerendering reads the build machine's date, so the
+// server snapshot stays empty and the real date appears after hydration.
+const noSubscribe = () => () => {};
+const clientToday = () => new Date().toISOString().slice(0, 10);
+const clientIn30Days = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().slice(0, 10);
+};
+const serverEmpty = () => "";
+
 export default function PrescriptionStudio() {
   const router = useRouter();
 
@@ -56,12 +67,13 @@ export default function PrescriptionStudio() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<RxItem[]>([]);
-  const [consultationDate, setConsultationDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [validUntil, setValidUntil] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 30);
-    return d.toISOString().slice(0, 10);
-  });
+  // Dates default to today / +30 days but stay overridable by the doctor.
+  const [consultationDateInput, setConsultationDate] = useState<string | null>(null);
+  const [validUntilInput, setValidUntil] = useState<string | null>(null);
+  const clientConsultationDate = useSyncExternalStore(noSubscribe, clientToday, serverEmpty);
+  const clientValidUntil = useSyncExternalStore(noSubscribe, clientIn30Days, serverEmpty);
+  const consultationDate = consultationDateInput ?? clientConsultationDate;
+  const validUntil = validUntilInput ?? clientValidUntil;
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
