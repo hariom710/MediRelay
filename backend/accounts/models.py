@@ -1,5 +1,6 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
+from django.utils import timezone
 from config.state_machine import StateMachineMixin
 
 
@@ -65,6 +66,8 @@ class User(AbstractUser):
     phone = models.CharField(max_length=20, blank=True)
     roles = models.ManyToManyField('Role', related_name='users', blank=True)
     active_role = models.CharField(max_length=20, blank=True)
+    # Set for doctor-created accounts; blocks portal use until changed.
+    must_change_password = models.BooleanField(default=False)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -144,13 +147,35 @@ class DoctorProfile(VerificationStateMachineMixin, models.Model):
 
 
 class PatientProfile(models.Model):
+    """One row per person, global. Never owned by a doctor.
+
+    Access is granted separately via CareAccess. `created_by` records who
+    registered the profile and is provenance only — it is never an
+    authorization key.
+    """
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='patient_profile')
     date_of_birth = models.DateField(null=True, blank=True)
     gender = models.CharField(max_length=20, blank=True)
     blood_group = models.CharField(max_length=10, blank=True)
     allergies = models.TextField(blank=True)  # free text in v1; structured allergy table later
+    chronic_conditions = models.TextField(blank=True)
+    patient_code = models.CharField(max_length=12, unique=True, editable=False)
+    phone_normalized = models.CharField(max_length=20, blank=True, db_index=True)
+    is_claimed = models.BooleanField(default=True)
     created_by = models.ForeignKey(User, null=True, blank=True,
                                    on_delete=models.SET_NULL, related_name='created_patients')
+
+    def save(self, *args, **kwargs):
+        from .registry import unique_patient_code, normalize_phone
+        if not self.patient_code:
+            self.patient_code = unique_patient_code()
+        if self.user_id:
+            self.phone_normalized = normalize_phone(self.user.phone)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.patient_code} ({self.user_id})'
 
 
 class PharmacyProfile(VerificationStateMachineMixin, models.Model):
@@ -168,3 +193,115 @@ class PharmacyProfile(VerificationStateMachineMixin, models.Model):
     verification_status = models.CharField(
         max_length=20, choices=VerificationStatus.choices, default=VerificationStatus.PENDING)
     verification_note = models.TextField(blank=True)
+
+
+class AccessScope(models.TextChoices):
+    BASIC = 'basic', 'Basic'
+    FULL = 'full', 'Full'
+
+
+class AccessStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending'
+    ACTIVE = 'active', 'Active'
+    DENIED = 'denied', 'Denied'
+    REVOKED = 'revoked', 'Revoked'
+    EXPIRED = 'expired', 'Expired'
+
+
+class GrantedVia(models.TextChoices):
+    PATIENT_APPROVED = 'patient_approved', 'Patient approved'
+    ONE_TIME_CODE = 'one_time_code', 'One-time code'
+    LEGACY = 'legacy', 'Legacy import'
+
+
+class CareAccess(StateMachineMixin, models.Model):
+    """A patient's consent for one doctor to read their record.
+
+    One row per (doctor, patient); denying or revoking moves the row back to
+    pending so a later re-request reuses it.
+    """
+
+    doctor = models.ForeignKey(DoctorProfile, on_delete=models.CASCADE,
+                               related_name='care_access')
+    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE,
+                                related_name='care_access')
+    scope = models.CharField(max_length=10, choices=AccessScope.choices,
+                             default=AccessScope.BASIC)
+    status = models.CharField(max_length=20, choices=AccessStatus.choices,
+                              default=AccessStatus.PENDING)
+    granted_via = models.CharField(max_length=20, choices=GrantedVia.choices, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    granted_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    TRANSITIONS = {
+        AccessStatus.PENDING: [AccessStatus.ACTIVE, AccessStatus.DENIED],
+        AccessStatus.ACTIVE: [AccessStatus.REVOKED, AccessStatus.EXPIRED],
+        AccessStatus.DENIED: [AccessStatus.PENDING],
+        AccessStatus.REVOKED: [AccessStatus.PENDING],
+        AccessStatus.EXPIRED: [AccessStatus.PENDING],
+    }
+
+    class Meta:
+        unique_together = [('doctor', 'patient')]
+        indexes = [
+            models.Index(fields=['patient', 'status'], name='idx_access_patient_status'),
+            models.Index(fields=['doctor', 'status'], name='idx_access_doctor_status'),
+        ]
+
+    def __str__(self):
+        return f'{self.doctor_id}->{self.patient_id} {self.status}'
+
+    @property
+    def effective_status(self):
+        """Expiry is derived on read, so no cron job is needed."""
+        if (self.status == AccessStatus.ACTIVE and self.expires_at
+                and self.expires_at <= timezone.now()):
+            return AccessStatus.EXPIRED
+        return self.status
+
+    def grant(self, via, days=365, scope=None, actor=None, request=None):
+        if self.status in (AccessStatus.DENIED, AccessStatus.REVOKED, AccessStatus.EXPIRED):
+            self.transition_to(AccessStatus.PENDING, actor=actor, request=request,
+                               reason='Access re-requested')
+        self.granted_via = via
+        self.granted_at = timezone.now()
+        self.expires_at = timezone.now() + timezone.timedelta(days=days)
+        self.revoked_at = None
+        if scope:
+            self.scope = scope
+        fields = ['granted_via', 'granted_at', 'expires_at', 'revoked_at', 'scope']
+        if self.status == AccessStatus.PENDING:
+            self.transition_to(AccessStatus.ACTIVE, actor=actor, request=request,
+                               reason=f'Access granted via {via}', update_fields=fields)
+        else:
+            self.save(update_fields=fields)
+
+    def deny(self, actor=None, request=None):
+        self.transition_to(AccessStatus.DENIED, actor=actor, request=request,
+                           reason='Access denied by patient')
+
+    def revoke(self, actor=None, request=None):
+        self.revoked_at = timezone.now()
+        self.transition_to(AccessStatus.REVOKED, actor=actor, request=request,
+                           reason='Access revoked by patient',
+                           update_fields=['revoked_at'])
+
+
+class PatientAccessCode(models.Model):
+    """Short-lived in-person consent code. Only the HMAC is stored."""
+
+    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE,
+                                related_name='access_codes')
+    code_hash = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['patient', 'expires_at'], name='idx_code_patient_exp')]
+

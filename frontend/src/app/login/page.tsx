@@ -100,14 +100,25 @@ export default function LoginPage() {
           </div>
         </form>
 
-        <div className="mt-8 border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--text-secondary)]">
-          Don&apos;t have an account?{" "}
-          <Link
-            href="/register"
-            className="font-semibold text-[var(--accent)] hover:underline"
-          >
-            Create an account
-          </Link>
+        <div className="mt-8 border-t border-[var(--border)] pt-6 text-center text-xs text-[var(--text-secondary)] space-y-2">
+          <div>
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/register"
+              className="font-semibold text-[var(--accent)] hover:underline"
+            >
+              Create an account
+            </Link>
+          </div>
+          <div>
+            Registered by your doctor?{" "}
+            <Link
+              href="/claim"
+              className="font-semibold text-[var(--accent)] hover:underline"
+            >
+              Claim your profile with Patient ID
+            </Link>
+          </div>
         </div>
       </Card>
     </main>

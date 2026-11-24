@@ -68,6 +68,16 @@ class PrescriptionSerializer(serializers.ModelSerializer):
         u = obj.doctor.user
         return u.get_full_name() or u.email
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Doctor private clinical notes are author-only
+            doc_profile = getattr(request.user, 'doctor_profile', None)
+            if doc_profile and instance.doctor_id != doc_profile.id:
+                data['notes'] = ''
+        return data
+
 
 class PharmacyRxSerializer(serializers.ModelSerializer):
     """Fulfillment-scoped view: items + what's needed to dispense. No history,
@@ -90,6 +100,16 @@ class PharmacyRxSerializer(serializers.ModelSerializer):
     def get_doctor_name(self, obj):
         u = obj.doctor.user
         return u.get_full_name() or u.email
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            # Doctor private clinical notes are author-only
+            doc_profile = getattr(request.user, 'doctor_profile', None)
+            if doc_profile and instance.doctor_id != doc_profile.id:
+                data['notes'] = ''
+        return data
 
     def get_gender(self, obj):
         return obj.patient.gender

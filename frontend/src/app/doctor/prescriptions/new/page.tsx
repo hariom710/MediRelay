@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useRef, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
@@ -98,9 +99,11 @@ export default function PrescriptionStudio() {
     const patientMatch = params.match(/[?&]patient=(\d+)/);
     if (patientMatch) {
       const id = Number(patientMatch[1]);
-      setTimeout(() => {
-        setPatient({ id, name: `Patient ${id}`, email: "", date_of_birth: null, gender: "", blood_group: "", allergies: "" });
-      }, 0);
+      api<Patient>(`/patients/${id}`)
+        .then(setPatient)
+        .catch(() => {
+          setPatient({ id, name: `Patient ${id}`, email: "", date_of_birth: null, gender: "", blood_group: "", allergies: "" });
+        });
     }
   }, []);
 
@@ -358,6 +361,12 @@ export default function PrescriptionStudio() {
                   }
                 }}
               />
+              <p className="text-xs text-[var(--text-secondary)] pt-1">
+                Need to find or authorize a patient?{" "}
+                <Link href="/doctor/patients/find" className="text-[var(--accent)] font-semibold underline">
+                  Find Patient or Enter In-Person Code →
+                </Link>
+              </p>
             </div>
           )}
         </Card>

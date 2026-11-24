@@ -95,3 +95,35 @@ def medicine2(db):
 def login(client, user, password='Testpass123!'):
     client.force_login(user)
     return client
+
+
+@pytest.fixture
+def grant_access():
+    from datetime import timedelta
+    from django.utils import timezone
+    from accounts.models import CareAccess, AccessScope, AccessStatus, GrantedVia
+
+    def _grant(doctor_user, patient_user, scope=AccessScope.FULL, days=365):
+        access, _ = CareAccess.objects.get_or_create(
+            doctor=doctor_user.doctor_profile,
+            patient=patient_user.patient_profile,
+            defaults={
+                'scope': scope,
+                'status': AccessStatus.ACTIVE,
+                'granted_via': GrantedVia.LEGACY,
+                'granted_at': timezone.now(),
+                'expires_at': timezone.now() + timedelta(days=days),
+            }
+        )
+        if access.status != AccessStatus.ACTIVE or (access.expires_at and access.expires_at <= timezone.now()):
+            access.status = AccessStatus.ACTIVE
+            access.scope = scope
+            access.granted_via = GrantedVia.LEGACY
+            access.granted_at = timezone.now()
+            access.expires_at = timezone.now() + timedelta(days=days)
+            access.revoked_at = None
+            access.save()
+        return access
+
+    return _grant
+
