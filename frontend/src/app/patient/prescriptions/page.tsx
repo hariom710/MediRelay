@@ -80,11 +80,75 @@ export default function PatientPrescriptions() {
     setLoadingCompare(true);
     setComparison(null);
     try {
-      const res = await api<ComparisonResult>("/price-comparisons", {
-        method: "POST",
-        body: { prescription_id: rxId },
-      });
-      setComparison(res);
+      interface RawComparison {
+        options?: {
+          pharmacy_ids?: number[];
+          pharmacy_count?: number;
+          medicine_total?: string;
+          fees_total?: string;
+          grand_total?: string;
+          lines?: {
+            prescription_item_id: number;
+            pharmacy_id: number;
+            pharmacy_name: string;
+            medicine: string;
+            unit_price: string;
+            line_total: string;
+          }[];
+          fulfillments?: {
+            pharmacy_id: number;
+            pharmacy_name: string;
+            pickup_fee: string;
+            subtotal: string;
+          }[];
+        }[];
+      }
+
+      const [resSingle, resMulti] = await Promise.allSettled([
+        api<RawComparison>("/price-comparisons", {
+          method: "POST",
+          body: { prescription_id: rxId, mode: "cheapest_complete" },
+        }),
+        api<RawComparison>("/price-comparisons", {
+          method: "POST",
+          body: { prescription_id: rxId, mode: "cheapest_combination" },
+        }),
+      ]);
+
+      let single_best: ComparisonResult["single_best"] = null;
+      if (resSingle.status === "fulfilled" && (resSingle.value?.options?.length ?? 0) > 0) {
+        const opt = resSingle.value.options![0];
+        const f = opt.fulfillments?.[0];
+        single_best = {
+          pharmacy_id: f?.pharmacy_id || opt.pharmacy_ids?.[0] || 1,
+          pharmacy_name: f?.pharmacy_name || "Pharmacy",
+          total_price: opt.medicine_total || opt.grand_total || "0",
+          pickup_fee: f?.pickup_fee || opt.fees_total || "0",
+          grand_total: opt.grand_total || "0",
+          items: (opt.lines || []).map((l) => ({
+            prescription_item_id: l.prescription_item_id,
+            unit_price: l.unit_price,
+            line_total: l.line_total,
+          })),
+        };
+      }
+
+      let multi_best: ComparisonResult["multi_best"] = null;
+      if (resMulti.status === "fulfilled" && (resMulti.value?.options?.length ?? 0) > 0) {
+        const opt = resMulti.value.options![0];
+        multi_best = {
+          grand_total: opt.grand_total || "0",
+          items: (opt.lines || []).map((l) => ({
+            prescription_item_id: l.prescription_item_id,
+            pharmacy_id: l.pharmacy_id,
+            pharmacy_name: l.pharmacy_name,
+            unit_price: l.unit_price,
+            line_total: l.line_total,
+          })),
+        };
+      }
+
+      setComparison({ single_best, multi_best });
     } catch {
       // No quotations submitted yet
     } finally {

@@ -182,7 +182,7 @@ class PrescriptionShare(StateMachineMixin, models.Model):
     class Meta:
         ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['status', 'expires_at'], name='idx_prescriptionshare_status_expires'),
+            models.Index(fields=['status', 'expires_at'], name='idx_rxshare_stat_exp'),
         ]
 
     @property

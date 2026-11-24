@@ -96,8 +96,8 @@ class OrderFulfillment(StateMachineMixin, models.Model):
     class Meta:
         unique_together = [('order', 'pharmacy')]
         indexes = [
-            models.Index(fields=['pharmacy'], name='idx_orderfulfillment_pharmacy'),
-            models.Index(fields=['pharmacy', 'status'], name='idx_orderfulfillment_pharm_status'),
+            models.Index(fields=['pharmacy'], name='idx_ordful_pharmacy'),
+            models.Index(fields=['pharmacy', 'status'], name='idx_ordful_pharm_stat'),
         ]
 
     def start_processing(self, actor=None, reason: str = None, request=None):
@@ -146,12 +146,6 @@ class OrderItem(models.Model):
 
     class Meta:
         unique_together = [('fulfillment', 'prescription_item')]
-        constraints = [
-            models.CheckConstraint(
-                check=models.Q(payment_status__in=['pending', 'paid', 'failed', 'refunded']),
-                name='valid_payment_status',
-            ),
-        ]
 
 
 class Invoice(StateMachineMixin, models.Model):
@@ -169,6 +163,14 @@ class Invoice(StateMachineMixin, models.Model):
         PaymentStatus.FAILED: [PaymentStatus.PENDING],
         PaymentStatus.REFUNDED: [],
     }
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(payment_status__in=['pending', 'paid', 'failed', 'refunded']),
+                name='valid_payment_status',
+            ),
+        ]
 
     class Meta:
         ordering = ['-issued_at']

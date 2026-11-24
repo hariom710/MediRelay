@@ -52,17 +52,32 @@ export default function PrescriptionStudio() {
   const router = useRouter();
 
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [patientList, setPatientList] = useState<Patient[]>([]);
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<RxItem[]>([]);
-  const [consultationDate, setConsultationDate] = useState("");
-  const [validUntil, setValidUntil] = useState("");
+  const [consultationDate, setConsultationDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [validUntil, setValidUntil] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [draftId, setDraftId] = useState<number | null>(null);
 
   const isNewDraft = !draftId;
+
+  // load patient list and initial medicine list
+  useEffect(() => {
+    api<Patient[]>("/patients")
+      .then(setPatientList)
+      .catch(() => {});
+    api<Medicine[]>("/medicines/search")
+      .then(setMedicines)
+      .catch(() => {});
+  }, []);
 
   // load patient from URL search params
   useEffect(() => {
@@ -73,20 +88,20 @@ export default function PrescriptionStudio() {
       const id = Number(patientMatch[1]);
       setTimeout(() => {
         setPatient({ id, name: `Patient ${id}`, email: "", date_of_birth: null, gender: "", blood_group: "", allergies: "" });
-        const v = new Date();
-        v.setDate(v.getDate() + 30);
-        setValidUntil(v.toISOString().slice(0, 10));
       }, 0);
     }
   }, []);
 
-  // searchMedicines removed - simplified
-
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setSearchQuery(e.target.value);
+    const q = e.target.value;
+    setSearchQuery(q);
     clearTimeout(searchDebounce.current);
-    searchDebounce.current = setTimeout(() => {}, 250);
+    searchDebounce.current = setTimeout(() => {
+      api<Medicine[]>(`/medicines/search${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`)
+        .then(setMedicines)
+        .catch(() => setMedicines([]));
+    }, 250);
   }
 
   function addMedicine(med: Medicine) {
@@ -95,22 +110,24 @@ export default function PrescriptionStudio() {
     const item: RxItem = {
       id: null,
       medicine: med.id,
-      medicine_name: med.display_name,
+      medicine_name: med.brand_name || med.display_name || med.generic_name,
       strength: med.strength,
       dosage_form: med.dosage_form,
       qty_per_dose: 1,
-      morning: 0,
+      morning: 1,
       afternoon: 0,
-      night: 0,
+      night: 1,
       meal_timing: "after_food",
-      duration_days: 1,
+      duration_days: 5,
       total_qty: 0,
       calculated_qty: 0,
-      instructions: "",
+      instructions: "Take with water",
       sort_order: now,
     };
-    setItems([...items, { ...item, total_qty: computeQty(item), calculated_qty: computeQty(item) }]);
-    setMedicines([]);
+    const qty = computeQty(item);
+    const newItem = { ...item, total_qty: qty, calculated_qty: qty };
+    setItems([...items, newItem]);
+    setConfirmed((prev) => ({ ...prev, [now]: String(qty) }));
     setSearchQuery("");
   }
 
@@ -121,9 +138,11 @@ export default function PrescriptionStudio() {
   function updateItem(index: number, patch: Partial<RxItem>) {
     const next = [...items];
     next[index] = { ...next[index], ...patch };
-    next[index].total_qty = computeQty(next[index]);
-    next[index].calculated_qty = computeQty(next[index]);
+    const qty = computeQty(next[index]);
+    next[index].total_qty = qty;
+    next[index].calculated_qty = qty;
     setItems(next);
+    setConfirmed((prev) => ({ ...prev, [next[index].id ?? index]: String(qty) }));
   }
 
   // allergy alert
@@ -293,18 +312,41 @@ export default function PrescriptionStudio() {
             </>
           )}
           {!patient && (
-            <Input
-              label="Select patient (id)"
-              placeholder="Enter patient id"
-              value={String((patient as Patient | null)?.id || "")}
-              onChange={(e) => {
-                const id = Number(e.target.value);
-                if (!isNaN(id)) {
-                  // load patient
-                  api<Patient>(`/patients/${id}`).then((p) => setPatient(p));
-                }
-              }}
-            />
+            <div className="space-y-3">
+              {patientList.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-ink-secondary mb-1">
+                    Choose from existing patients
+                  </label>
+                  <select
+                    className="w-full rounded border border-border bg-white px-3 py-2 text-sm text-ink"
+                    value=""
+                    onChange={(e) => {
+                      const sel = patientList.find((p) => p.id === Number(e.target.value));
+                      if (sel) setPatient(sel);
+                    }}
+                  >
+                    <option value="">-- Select Patient --</option>
+                    {patientList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.email || `ID: ${p.id}`})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <Input
+                label="Or enter patient ID"
+                placeholder="Enter patient id"
+                value={String((patient as Patient | null)?.id || "")}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  if (!isNaN(id) && id > 0) {
+                    api<Patient>(`/patients/${id}`).then((p) => setPatient(p)).catch(() => {});
+                  }
+                }}
+              />
+            </div>
           )}
         </Card>
 
