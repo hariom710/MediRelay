@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import Shell from "@/components/shell";
 import { type Medicine } from "@/lib/types";
 
 export default function AddInventoryItem() {
+  const router = useRouter();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Medicine | null>(null);
@@ -39,7 +41,7 @@ export default function AddInventoryItem() {
         method: "POST",
         body: { medicine: selected.id, selling_price: price },
       });
-      window.location.href = "/pharmacy/inventory";
+      router.push("/pharmacy/inventory");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not add item.");
     } finally {

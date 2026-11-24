@@ -1,4 +1,4 @@
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.response import Response
@@ -41,7 +41,7 @@ class InventoryListCreateView(APIView):
             item = InventoryItem.objects.create(
                 pharmacy=request.user.pharmacy_profile,
                 medicine_id=medicine_id, selling_price=price)
-        except Exception:
+        except IntegrityError:
             return Response({'detail': 'This medicine is already in your inventory.',
                              'code': 'duplicate'}, status=400)
         record(request.user, 'inventory.add', 'inventory_item', item.id, {}, request)
@@ -124,21 +124,29 @@ class BatchCreateView(APIView):
                              'code': 'expired_stock'}, status=400)
 
         with transaction.atomic():
-            batch, created = MedicineBatch.objects.update_or_create(
+            batch, created = MedicineBatch.objects.get_or_create(
                 inventory_item=item, batch_number=fields['batch_number'],
                 defaults={'expiry_date': expiry, 'mrp': fields['mrp'] or 0,
                           'purchase_price': fields['purchase_price'] or 0})
             if not created:
+                if batch.status not in (BatchStatus.ACTIVE, BatchStatus.DEPLETED):
+                    return Response(
+                        {'detail': f'Batch is {batch.status} and cannot receive stock. '
+                                   'Use a new batch number.',
+                         'code': 'batch_not_usable'}, status=409)
+                batch.expiry_date = expiry
+                batch.mrp = fields['mrp'] or 0
+                batch.purchase_price = fields['purchase_price'] or 0
                 batch.qty += qty
-                if batch.status != BatchStatus.ACTIVE:
-                    batch.status = BatchStatus.ACTIVE
-                    batch.save(update_fields=['qty', 'status'], bypass_transition_check=True)
+                if batch.status == BatchStatus.DEPLETED:
+                    batch.reactivate(
+                        actor=request.user, request=request, reason='Stock replenished',
+                        update_fields=['qty', 'expiry_date', 'mrp', 'purchase_price'])
                 else:
-                    batch.save(update_fields=['qty'])
+                    batch.save(update_fields=['qty', 'expiry_date', 'mrp', 'purchase_price'])
             else:
                 batch.qty = qty
-                batch.status = BatchStatus.ACTIVE
-                batch.save(update_fields=['qty', 'status'])
+                batch.save(update_fields=['qty'])
             StockMovement.objects.create(
                 batch=batch, movement_type='in', quantity=qty,
                 reason='stock entry', ref_type='manual', ref_id='',
@@ -253,10 +261,12 @@ class ExpiryAlertView(APIView):
 
         low_stock, expiring, expired = [], [], []
         for item in items:
-            if item.available_qty == 0:
+            if item.available_qty < 10:
                 low_stock.append({'id': item.id, 'medicine': item.medicine.display_name,
-                                  'qty': 0})
+                                  'qty': item.available_qty})
             for b in item.batches.all():
+                if b.qty <= 0:
+                    continue
                 row = {'batch_id': b.id, 'batch_number': b.batch_number,
                        'medicine': item.medicine.display_name,
                        'expiry_date': b.expiry_date.isoformat(), 'qty': b.qty}

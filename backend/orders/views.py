@@ -73,6 +73,7 @@ class OrderCreateView(APIView):
                   .select_related('quotation', 'prescription_item__medicine')
                   .filter(prescription_item_id=pi_id,
                           quotation__pharmacy_id=pid,
+                          quotation__pharmacy__verification_status='verified',
                           quotation__status__in=(QuotationStatus.SUBMITTED,
                                                  QuotationStatus.VIEWED),
                           quotation__valid_until__gte=now,
@@ -165,7 +166,7 @@ class OrderListView(APIView):
     permission_classes = [IsPatient]
 
     def get(self, request):
-        qs = request.user.patient_profile.orders.all()
+        qs = request.user.patient_profile.orders.select_related('patient__user')
         return Response(OrderSerializer(qs[:100], many=True).data)
 
 
@@ -296,7 +297,9 @@ class CancelFulfillmentView(APIView):
                       getattr(getattr(user, 'patient_profile', None), 'id', None))
         if not (is_pharmacy or is_patient or user.active_role == Role.ADMIN):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-        if fulfillment.status != FulfillmentStatus.PENDING:
+        if fulfillment.status not in (FulfillmentStatus.PENDING,
+                                      FulfillmentStatus.IN_PROGRESS,
+                                      FulfillmentStatus.READY_FOR_PICKUP):
             return Response({'detail': 'Already fulfilled — contact support for returns.',
                              'code': 'not_pending'}, status=409)
 

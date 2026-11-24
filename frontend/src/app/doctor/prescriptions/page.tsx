@@ -105,18 +105,23 @@ const STATUS_VARIANT: Record<string, string> = {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-border">
               {filtered.map((p) => (
-                <li key={p.id} className="px-6 py-4 tap-interactive hover:bg-accent/5 cursor-pointer" onClick={() => {}}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-ink">RX-{p.id}</p>
-                      <p className="text-xs text-ink-secondary">
-                        {p.patient_name} · v{p.version} · {p.consultation_date}
-                      </p>
+                <li key={p.id}>
+                  <Link
+                    href={`/doctor/prescriptions/${p.id}`}
+                    className="block px-6 py-4 tap-interactive hover:bg-accent/5"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium text-ink">RX-{p.id}</p>
+                        <p className="text-xs text-ink-secondary">
+                          {p.patient_name} · v{p.version} · {p.consultation_date}
+                        </p>
+                      </div>
+                      <Badge variant={(STATUS_VARIANT[p.status] || "neutral") as "draft" | "finalized" | "shared" | "expired" | "revoked" | "cancelled" | "neutral"}>
+                        {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
+                      </Badge>
                     </div>
-                    <Badge variant={(STATUS_VARIANT[p.status] || "neutral") as "draft" | "finalized" | "shared" | "expired" | "revoked" | "cancelled" | "neutral"}>
-                      {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
-                    </Badge>
-                  </div>
+                  </Link>
                 </li>
               ))}
             </ul>

@@ -29,15 +29,17 @@ interface ShareData {
   expires_at: string;
   prescription: {
     id: number;
-    doctor_name: string;
-    patient_display: string;
-    age: number | null;
-    allergy_flag: boolean;
-    allergies: string;
+    doctor_name?: string;
+    patient_display?: string;
+    patient_name?: string;
+    age?: number | null;
+    gender?: string;
+    allergy_flag?: boolean;
+    allergies?: string;
     consultation_date: string;
-    valid_until: string | null;
-    is_expired: boolean;
-    status: string;
+    valid_until?: string | null;
+    is_expired?: boolean;
+    status?: string;
     version: number;
     items: RxItem[];
   };
@@ -58,7 +60,6 @@ function ShareTokenContent({ params }: { params: Promise<{ token: string }> }) {
 
   useEffect(() => {
     if (!token) return;
-    setLoading(true);
     api<ShareData>(`/shares/${token}`)
       .then((res) => {
         setData(res);
@@ -116,7 +117,7 @@ function ShareTokenContent({ params }: { params: Promise<{ token: string }> }) {
                   <Badge variant="finalized" size="sm">v{data.prescription.version}</Badge>
                 </div>
                 <p className="text-xs text-[var(--text-tertiary)] mt-1">
-                  Issued by {data.prescription.doctor_name} • Consultation: {data.prescription.consultation_date}
+                  Issued by {data.prescription.doctor_name || "your doctor"} • Consultation: {data.prescription.consultation_date}
                 </p>
               </div>
               {data.prescription.allergy_flag && (
@@ -127,7 +128,7 @@ function ShareTokenContent({ params }: { params: Promise<{ token: string }> }) {
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
                 <span className="text-[var(--text-tertiary)]">Patient:</span>
-                <p className="font-medium mt-0.5">{data.prescription.patient_display} {data.prescription.age ? `(${data.prescription.age} yrs)` : ""}</p>
+                <p className="font-medium mt-0.5">{data.prescription.patient_display || data.prescription.patient_name || "Patient"} {data.prescription.age ? `(${data.prescription.age} yrs)` : ""}</p>
               </div>
               <div>
                 <span className="text-[var(--text-tertiary)]">Valid Until:</span>

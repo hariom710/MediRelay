@@ -23,6 +23,10 @@ class InventoryItem(models.Model):
     class Meta:
         unique_together = [('pharmacy', 'medicine')]
         ordering = ['medicine__generic_name']
+        indexes = [
+            models.Index(fields=['medicine'], name='idx_inventoryitem_medicine'),
+            models.Index(fields=['pharmacy', 'medicine'], name='idx_inventoryitem_pharm_med'),
+        ]
 
     @property
     def available_qty(self):
@@ -53,6 +57,10 @@ class MedicineBatch(StateMachineMixin, models.Model):
     class Meta:
         unique_together = [('inventory_item', 'batch_number')]
         ordering = ['expiry_date']  # FEFO: first expiry first out
+        indexes = [
+            models.Index(fields=['inventory_item'], name='idx_medicinebatch_inventory'),
+            models.Index(fields=['inventory_item', 'status'], name='idx_medicinebatch_inv_status'),
+        ]
 
     @property
     def is_expired(self):
@@ -94,12 +102,13 @@ class MedicineBatch(StateMachineMixin, models.Model):
             request=request
         )
 
-    def reactivate(self, actor=None, reason: str = None, request=None):
+    def reactivate(self, actor=None, reason: str = None, request=None, update_fields: list = None):
         return self.transition_to(
             BatchStatus.ACTIVE,
             actor=actor,
             reason=reason or 'Batch reactivated with replenished stock',
-            request=request
+            request=request,
+            update_fields=update_fields
         )
 
 

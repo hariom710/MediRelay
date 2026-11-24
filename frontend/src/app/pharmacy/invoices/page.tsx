@@ -62,7 +62,7 @@ export default function InvoicesPage() {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-border">
               {rows.map((inv) => (
-                <li key={inv.id} className="px-6 py-4 tap-interactive hover:bg-accent/5 cursor-pointer" onClick={() => {}}>
+                <li key={inv.id} className="px-6 py-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium text-ink">Invoice #{inv.id}</p>

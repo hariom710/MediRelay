@@ -77,8 +77,10 @@ export default function PatientsList() {
             <ul className="divide-y divide-border">
               {patients.map((p) => (
                 <li key={p.id} className="px-6 py-4 flex justify-between items-start hover:bg-accent/5 transition-colors">
-                  <div onClick={() => {}}
-                    className="tap-interactive cursor-pointer">
+                  <Link
+                    href={`/doctor/patients/${p.id}`}
+                    className="tap-interactive"
+                  >
                     <p className="font-medium text-ink">{p.name}</p>
                     <p className="text-xs text-ink-secondary">{p.email}</p>
                     {p.date_of_birth && (
@@ -86,7 +88,7 @@ export default function PatientsList() {
                         {new Date(p.date_of_birth).toLocaleDateString("en-GB")}
                       </p>
                     )}
-                  </div>
+                  </Link>
                   <div className="flex items-center gap-2">
                     {p.allergies ? (
                       <Badge variant="danger" className="px-2 py-1">

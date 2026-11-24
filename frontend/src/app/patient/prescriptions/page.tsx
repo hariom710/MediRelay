@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -62,22 +62,19 @@ export default function PatientPrescriptions() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  const loadPrescriptions = useCallback(async () => {
-    try {
-      const data = await api<Prescription[]>("/prescriptions");
-      setPrescriptions(data);
-      if (data.length > 0 && selectedRxId === null) {
-        setSelectedRxId(data[0].id);
-        fetchComparison(data[0].id);
-      }
-    } catch (e) {
-      if (e instanceof Error) setError(e.message);
-    }
-  }, [selectedRxId]);
-
   useEffect(() => {
-    loadPrescriptions();
-  }, [loadPrescriptions]);
+    api<Prescription[]>("/prescriptions")
+      .then((data) => {
+        setPrescriptions(data);
+        if (data.length > 0) {
+          setSelectedRxId(data[0].id);
+          fetchComparison(data[0].id);
+        }
+      })
+      .catch((e) => {
+        if (e instanceof Error) setError(e.message);
+      });
+  }, []);
 
   async function fetchComparison(rxId: number) {
     setLoadingCompare(true);
@@ -121,7 +118,7 @@ export default function PatientPrescriptions() {
     setError("");
     setSuccessMsg("");
     try {
-      const res = await api<any>("/orders", {
+      const res = await api<{ id: number }>("/orders", {
         method: "POST",
         body: {
           prescription_id: selectedRxId,
@@ -163,9 +160,9 @@ export default function PatientPrescriptions() {
             role="alert"
             className="flex items-center justify-between rounded-[var(--r-md)] bg-[var(--danger-subtle)] p-4 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20"
           >
-            <span>⚠ {error}</span>
+            <span>! {error}</span>
             <button onClick={() => setError("")} className="font-bold hover:opacity-75">
-              ✕
+              ×
             </button>
           </div>
         )}
@@ -175,9 +172,9 @@ export default function PatientPrescriptions() {
             role="status"
             className="flex items-center justify-between rounded-[var(--r-md)] bg-[var(--success-subtle)] p-4 text-xs font-medium text-[var(--success)] border border-[var(--success)]/30"
           >
-            <span>✓ {successMsg}</span>
+            <span>{successMsg}</span>
             <button onClick={() => setSuccessMsg("")} className="font-bold hover:opacity-75">
-              ✕
+              ×
             </button>
           </div>
         )}

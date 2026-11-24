@@ -64,7 +64,7 @@ export function Input({
           aria-live="polite"
           className="text-xs font-medium text-[var(--danger)] flex items-center gap-1"
         >
-          <span>⚠</span>
+          <span>!</span>
           <span>{error}</span>
         </p>
       )}
@@ -123,7 +123,7 @@ export function Textarea({
           aria-live="polite"
           className="text-xs font-medium text-[var(--danger)] flex items-center gap-1"
         >
-          <span>⚠</span>
+          <span>!</span>
           <span>{error}</span>
         </p>
       )}

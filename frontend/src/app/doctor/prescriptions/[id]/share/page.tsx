@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState, use, Suspense } from "react";
-import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -24,12 +23,11 @@ interface Share {
 }
 
 function SharePageInner({ params }: { params: Promise<{ id: string }> }) {
-  const router = useRouter();
   const { id } = use(params);
   const [rx, setRx] = useState<Rx | null>(null);
   const [shares, setShares] = useState<Share[] | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
-  const [newShareId, setNewShareId] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -49,7 +47,7 @@ function SharePageInner({ params }: { params: Promise<{ id: string }> }) {
         body: { expires_in_days: 7 },
       });
       setNewToken(res.token);
-      setNewShareId(res.share.id);
+      setCopied(false);
       setShares((prev) => (prev ? [...prev, res.share] : [res.share]));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not create share.");
@@ -114,10 +112,10 @@ function SharePageInner({ params }: { params: Promise<{ id: string }> }) {
               size="sm"
               onClick={() => {
                 navigator.clipboard.writeText(`${window.location.origin}/shares/${newToken}`);
-                window.alert("Copied to clipboard!");
+                setCopied(true);
               }}
             >
-              Copy
+              {copied ? "Copied" : "Copy"}
             </Button>
           </div>
         </Card>
