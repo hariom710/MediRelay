@@ -21,7 +21,7 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api<Order[]>("/orders/list")
+    api<Order[]>("/pharmacy/orders")
       .then(setRows)
       .catch((e) => setError(e.message));
   }, []);

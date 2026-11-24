@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
@@ -47,7 +47,7 @@ class PharmacyRequestsView(APIView):
         rows = []
         for share in shares:
             rx = share.prescription
-            if rx.status != PrescriptionStatus.FINALIZED:
+            if rx.is_expired or rx.status != PrescriptionStatus.FINALIZED:
                 continue
             existing = Quotation.objects.filter(prescription=rx, pharmacy=profile).first()
             rows.append({
@@ -76,10 +76,28 @@ class QuotationListCreateView(APIView):
 
     def post(self, request):
         share_id = request.data.get('share_id')
-        try:
-            share = PrescriptionShare.objects.select_related('prescription').get(pk=share_id)
-        except PrescriptionShare.DoesNotExist:
-            return Response({'detail': 'Share not found.', 'code': 'not_found'}, status=404)
+        prescription_id = request.data.get('prescription') or request.data.get('prescription_id')
+        share = None
+        if share_id:
+            try:
+                share = PrescriptionShare.objects.select_related('prescription').get(pk=share_id)
+            except PrescriptionShare.DoesNotExist:
+                return Response({'detail': 'Share not found.', 'code': 'not_found'}, status=404)
+        elif prescription_id:
+            profile = request.user.pharmacy_profile
+            # Look for active share targeted to this pharmacy or open
+            share = PrescriptionShare.objects.select_related('prescription').filter(
+                prescription_id=prescription_id
+            ).filter(models.Q(pharmacy=profile) | models.Q(pharmacy__isnull=True)).first()
+            if not share:
+                # Check if prescription itself exists
+                rx_exists = Prescription.objects.filter(pk=prescription_id).first()
+                if rx_exists and (rx_exists.is_expired or rx_exists.status != PrescriptionStatus.FINALIZED):
+                    return Response({'detail': 'This prescription has expired.', 'code': 'prescription_expired'}, status=410)
+                return Response({'detail': 'Share not found.', 'code': 'not_found'}, status=404)
+        else:
+            return Response({'detail': 'share_id or prescription is required.', 'code': 'validation_error'}, status=400)
+
         if not share.is_active:
             return Response({'detail': 'This share link is no longer active.',
                              'code': 'share_inactive'}, status=410)
@@ -89,7 +107,7 @@ class QuotationListCreateView(APIView):
                              'code': 'not_your_share'}, status=403)
 
         rx = share.prescription
-        if rx.status != PrescriptionStatus.FINALIZED:
+        if rx.is_expired or rx.status != PrescriptionStatus.FINALIZED:
             return Response({'detail': 'Prescription is not active.',
                              'code': 'rx_inactive'}, status=409)
         if Quotation.objects.filter(prescription=rx, pharmacy=profile).exists():
@@ -107,8 +125,11 @@ class QuotationListCreateView(APIView):
         except ValueError as e:
             return Response({'detail': str(e), 'code': 'validation_error'}, status=400)
 
-        valid_days = int(request.data.get('valid_days', 2))
-        valid_days = max(1, min(valid_days, 14))
+        try:
+            valid_days = int(request.data.get('valid_days', 2))
+            valid_days = max(1, min(valid_days, 14))
+        except (ValueError, TypeError):
+            return Response({'detail': 'valid_days must be an integer between 1 and 14.', 'code': 'validation_error'}, status=400)
 
         with transaction.atomic():
             quote = Quotation.objects.create(
@@ -155,11 +176,16 @@ def _save_items(quote, items_data, rx):
         if not available:
             unit_price = Decimal('0.00')
 
+        try:
+            qty_offered = int(row.get('qty_offered', 0))
+        except (ValueError, TypeError):
+            raise ValueError(f'qty_offered for item {pid} must be an integer.')
+
         qi = QuotationItem.objects.create(
             quotation=quote, prescription_item_id=pid,
             offered_medicine_id=row.get('offered_medicine') or None,
             available=available,
-            qty_offered=int(row.get('qty_offered') or 0),
+            qty_offered=qty_offered,
             unit_price=unit_price,
             batch_number=row.get('batch_number') or '',
             note=row.get('note') or '')
@@ -263,8 +289,12 @@ class QuotationReviseView(APIView):
             quote.revision += 1
             if items_data:
                 quote.items.all().delete()
-                total = _save_items(quote, items_data, quote.prescription)
-                quote.total = total
+                try:
+                    total = _save_items(quote, items_data, quote.prescription)
+                    quote.total = total
+                except ValueError as e:
+                    transaction.set_rollback(True)
+                    return Response({'detail': str(e), 'code': 'validation_error'}, status=400)
             if 'pickup_fee' in request.data:
                 try:
                     quote.pickup_fee = _parse_pickup_fee(request.data['pickup_fee'])
@@ -272,8 +302,13 @@ class QuotationReviseView(APIView):
                     transaction.set_rollback(True)
                     return Response({'detail': str(e), 'code': 'validation_error'}, status=400)
             if 'valid_days' in request.data:
-                days = max(1, min(int(request.data['valid_days']), 14))
-                quote.valid_until = timezone.now() + timezone.timedelta(days=days)
+                try:
+                    days = int(request.data['valid_days'])
+                    days = max(1, min(days, 14))
+                    quote.valid_until = timezone.now() + timezone.timedelta(days=days)
+                except (ValueError, TypeError):
+                    transaction.set_rollback(True)
+                    return Response({'detail': 'valid_days must be an integer between 1 and 14.', 'code': 'validation_error'}, status=400)
             quote.save(update_fields=['revision', 'total', 'pickup_fee', 'valid_until', 'updated_at'])
 
             if request.data.get('submit', True):
@@ -322,3 +357,21 @@ class QuotationDetailView(APIView):
         if not (is_patient or is_pharmacy or user.active_role == 'admin'):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         return Response(QuotationSerializer(quote).data)
+
+
+class QuotationRejectView(APIView):
+    """Patient explicitly rejects a quotation."""
+
+    def post(self, request, pk):
+        try:
+            quote = Quotation.objects.select_related('prescription__patient__user').get(pk=pk)
+        except Quotation.DoesNotExist:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        user = request.user
+        if not user.is_authenticated or user.active_role != 'patient' or quote.prescription.patient.user_id != user.id:
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if quote.status not in (QuotationStatus.SUBMITTED, QuotationStatus.VIEWED):
+            return Response({'detail': f'Cannot reject quotation in {quote.status} status.',
+                             'code': 'invalid_state'}, status=409)
+        quote.reject(actor=user, request=request, reason='Patient rejected quotation')
+        return Response({'id': quote.id, 'status': quote.status})

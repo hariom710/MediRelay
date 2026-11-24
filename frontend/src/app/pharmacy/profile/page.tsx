@@ -17,7 +17,8 @@ interface PharmacyProfile {
   phone: string;
   opening_hours: string;
   contact_person: string;
-  licence_number: string;
+  licence_number?: string;
+  license_number?: string;
   verification_status: string;
   verification_note: string;
   default_pickup_fee: string;
@@ -28,6 +29,7 @@ export default function PharmacyProfile() {
   const [profile, setProfile] = useState<PharmacyProfile | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState("");
+  const [savedSuccess, setSavedSuccess] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -39,6 +41,7 @@ export default function PharmacyProfile() {
     if (!profile) return;
     setBusy(true);
     setError("");
+    setSavedSuccess(false);
     try {
       await api("/pharmacy/profile", {
         method: "PUT",
@@ -54,7 +57,8 @@ export default function PharmacyProfile() {
           default_validity_days: profile.default_validity_days,
         },
       });
-      window.alert("Profile saved.");
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 4000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not save profile.");
     } finally {
@@ -77,6 +81,12 @@ export default function PharmacyProfile() {
       <div className="max-w-3xl">
         <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">Profile</h1>
         <p className="text-sm text-ink-secondary mb-8">Your pharmacy details</p>
+
+        {savedSuccess && (
+          <div className="mb-6 p-4 rounded-[var(--r-md)] border border-emerald-500/20 bg-emerald-50 text-emerald-800 text-sm font-medium">
+            Profile saved successfully.
+          </div>
+        )}
 
         {error && (
           <Card className="mb-6">

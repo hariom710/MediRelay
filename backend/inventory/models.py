@@ -27,7 +27,7 @@ class InventoryItem(models.Model):
     @property
     def available_qty(self):
         from django.utils import timezone
-        return sum(b.qty for b in self.batches.exclude(expiry_date__lt=timezone.now().date()))
+        return sum(b.qty for b in self.batches.filter(status=BatchStatus.ACTIVE).exclude(expiry_date__lt=timezone.now().date()))
 
 
 class MedicineBatch(StateMachineMixin, models.Model):
@@ -59,27 +59,30 @@ class MedicineBatch(StateMachineMixin, models.Model):
         from django.utils import timezone
         return self.status == BatchStatus.EXPIRED or self.expiry_date < timezone.now().date()
 
-    def mark_expired(self, actor=None, reason: str = None, request=None):
+    def mark_expired(self, actor=None, reason: str = None, request=None, update_fields: list = None):
         return self.transition_to(
             BatchStatus.EXPIRED,
             actor=actor,
             reason=reason or 'Batch expired past expiry date',
+            update_fields=update_fields,
             request=request
         )
 
-    def write_off(self, actor=None, reason: str = None, request=None):
+    def write_off(self, actor=None, reason: str = None, request=None, update_fields: list = None):
         return self.transition_to(
             BatchStatus.WRITTEN_OFF,
             actor=actor,
             reason=reason or 'Batch written off from inventory',
+            update_fields=update_fields,
             request=request
         )
 
-    def deplete(self, actor=None, reason: str = None, request=None):
+    def deplete(self, actor=None, reason: str = None, request=None, update_fields: list = None):
         return self.transition_to(
             BatchStatus.DEPLETED,
             actor=actor,
             reason=reason or 'Batch stock depleted to zero',
+            update_fields=update_fields,
             request=request
         )
 

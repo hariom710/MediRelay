@@ -101,9 +101,13 @@ class StateMachineMixin:
                 allowed=allowed
             )
 
-        if not self.pk or not save:
+        if not self.pk:
             setattr(self, self.status_field_name, target_state)
             self._initial_state = target_state
+            return
+
+        if not save:
+            setattr(self, self.status_field_name, target_state)
             return
 
         with transaction.atomic():

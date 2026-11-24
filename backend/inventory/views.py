@@ -26,13 +26,24 @@ class InventoryListCreateView(APIView):
             return Response({'detail': 'medicine and selling_price required.',
                              'code': 'validation_error'}, status=400)
         try:
+            from decimal import Decimal
+            price = Decimal(str(request.data.get('selling_price')))
+            if price < 0:
+                return Response({'detail': 'selling_price cannot be negative.', 'code': 'validation_error'}, status=400)
+        except (ValueError, TypeError, ArithmeticError):
+            return Response({'detail': 'selling_price must be a valid number.', 'code': 'validation_error'}, status=400)
+
+        from catalog.models import Medicine
+        if not Medicine.objects.filter(pk=medicine_id).exists():
+            return Response({'detail': 'Medicine not found.', 'code': 'not_found'}, status=404)
+
+        try:
             item = InventoryItem.objects.create(
                 pharmacy=request.user.pharmacy_profile,
                 medicine_id=medicine_id, selling_price=price)
         except Exception:
-            return Response({'detail': 'This medicine is already in your inventory, '
-                                       'or medicine id is invalid.',
-                             'code': 'duplicate_or_invalid'}, status=400)
+            return Response({'detail': 'This medicine is already in your inventory.',
+                             'code': 'duplicate'}, status=400)
         record(request.user, 'inventory.add', 'inventory_item', item.id, {}, request)
         return Response(InventoryItemSerializer(item).data, status=201)
 
@@ -103,7 +114,11 @@ class BatchCreateView(APIView):
             return Response({'detail': 'qty must be positive.', 'code': 'validation_error'},
                             status=400)
 
-        expiry = timezone.datetime.strptime(fields['expiry_date'], '%Y-%m-%d').date()
+        try:
+            from datetime import date
+            expiry = date.fromisoformat(str(fields['expiry_date']))
+        except (ValueError, TypeError):
+            return Response({'detail': 'expiry_date must be in YYYY-MM-DD format.', 'code': 'validation_error'}, status=400)
         if expiry < timezone.now().date():
             return Response({'detail': 'Expired stock cannot be added.',
                              'code': 'expired_stock'}, status=400)
@@ -115,10 +130,15 @@ class BatchCreateView(APIView):
                           'purchase_price': fields['purchase_price'] or 0})
             if not created:
                 batch.qty += qty
-                batch.save(update_fields=['qty'])
+                if batch.status != BatchStatus.ACTIVE:
+                    batch.status = BatchStatus.ACTIVE
+                    batch.save(update_fields=['qty', 'status'], bypass_transition_check=True)
+                else:
+                    batch.save(update_fields=['qty'])
             else:
                 batch.qty = qty
-                batch.save(update_fields=['qty'])
+                batch.status = BatchStatus.ACTIVE
+                batch.save(update_fields=['qty', 'status'])
             StockMovement.objects.create(
                 batch=batch, movement_type='in', quantity=qty,
                 reason='stock entry', ref_type='manual', ref_id='',
@@ -143,7 +163,7 @@ class StockAdjustmentView(APIView):
         except MedicineBatch.DoesNotExist:
             return Response({'detail': 'Batch not found.', 'code': 'not_found'}, status=404)
 
-        reason = request.data.get('reason', '').strip()
+        reason = str(request.data.get('reason') or '').strip()
         if not reason:
             return Response({'detail': 'reason is required.', 'code': 'validation_error'}, status=400)
         note = request.data.get('note', '')
@@ -206,16 +226,17 @@ class ExpireBatchView(APIView):
         if batch.qty <= 0:
             return Response({'detail': 'Batch already empty.', 'code': 'validation_error'}, status=400)
 
+        qty_written_off = batch.qty
         with transaction.atomic():
             StockMovement.objects.create(
-                batch=batch, movement_type='expire', quantity=-batch.qty,
+                batch=batch, movement_type='expire', quantity=-qty_written_off,
                 reason='expiry write-off', ref_type='manual', ref_id='',
                 created_by=request.user)
             batch.qty = 0
             batch.save(update_fields=['qty'], bypass_transition_check=True)
             batch.write_off(actor=request.user, request=request, reason='Expiry write-off')
             record(request.user, 'inventory.expire', 'batch', batch.id,
-                   {'qty': batch.qty}, request)
+                   {'qty': qty_written_off}, request)
         return Response(BatchSerializer(batch).data)
 
 

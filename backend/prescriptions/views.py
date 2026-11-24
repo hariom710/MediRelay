@@ -1,7 +1,7 @@
 import hashlib
 import secrets
 
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
@@ -23,7 +23,9 @@ SHARE_TTL_DAYS = 7
 
 
 def _can_view(user, rx) -> bool:
-    if user.active_role == Role.ADMIN:
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.active_role == Role.ADMIN:
         return True
     if user.active_role == Role.DOCTOR and hasattr(user, 'doctor_profile') \
             and rx.doctor_id == user.doctor_profile.id:
@@ -31,21 +33,42 @@ def _can_view(user, rx) -> bool:
     if user.active_role == Role.PATIENT and hasattr(user, 'patient_profile') \
             and rx.patient_id == user.patient_profile.id:
         return True
+    if user.active_role == Role.PHARMACY and hasattr(user, 'pharmacy_profile'):
+        profile = user.pharmacy_profile
+        has_share = PrescriptionShare.objects.filter(
+            prescription=rx,
+            status=ShareStatus.ACTIVE
+        ).filter(models.Q(pharmacy=profile) | models.Q(pharmacy__isnull=True)).exists()
+        if has_share:
+            return True
+        from quotations.models import Quotation
+        if Quotation.objects.filter(prescription=rx, pharmacy=profile).exists():
+            return True
     return False
 
 
 class PrescriptionListCreateView(APIView):
-    permission_classes = [IsDoctor]
-
     def get(self, request):
-        # doctor portal: only prescriptions this doctor wrote
-        qs = request.user.doctor_profile.prescriptions.all()
+        user = request.user
+        if not user.is_authenticated:
+            return Response({'detail': 'Authentication credentials were not provided.', 'code': 'not_authenticated'}, status=401)
         st = request.query_params.get('status')
+        if user.active_role == Role.PATIENT and hasattr(user, 'patient_profile'):
+            qs = user.patient_profile.prescriptions.all()
+        elif user.active_role == Role.DOCTOR and hasattr(user, 'doctor_profile'):
+            qs = user.doctor_profile.prescriptions.all()
+        elif user.is_staff or user.active_role == Role.ADMIN:
+            qs = Prescription.objects.all()
+        else:
+            return Response({'detail': 'Role not permitted to list prescriptions.', 'code': 'permission_denied'}, status=403)
         if st:
             qs = qs.filter(status=st)
         return Response(PrescriptionSerializer(qs[:100], many=True).data)
 
     def post(self, request):
+        user = request.user
+        if not (user.is_authenticated and user.active_role == Role.DOCTOR and hasattr(user, 'doctor_profile')):
+            return Response({'detail': 'Doctor profile required.', 'code': 'permission_denied'}, status=403)
         ser = ItemWriteSerializer(data=request.data.get('items'), many=True)
         ser.is_valid(raise_exception=True)
         patient_id = request.data.get('patient_id')
@@ -316,7 +339,13 @@ class ShareListCreateView(APIView):
                 return Response({'detail': 'Pharmacy not found or not verified.',
                                  'code': 'pharmacy_not_found'}, status=404)
 
-        days = int(request.data.get('expires_in_days', SHARE_TTL_DAYS))
+        raw_days = request.data.get('expires_in_days') or request.data.get('valid_days') or SHARE_TTL_DAYS
+        try:
+            days = int(raw_days)
+            if days <= 0 or days > 365:
+                raise ValueError()
+        except (ValueError, TypeError):
+            return Response({'detail': 'expires_in_days must be a positive integer.', 'code': 'validation_error'}, status=400)
         days = max(1, min(days, 30))
         token = secrets.token_urlsafe(32)
         share = PrescriptionShare.objects.create(
@@ -402,6 +431,16 @@ class ShareTokenView(APIView):
                    {'token_prefix': token[:8]}, request)
             return Response({'detail': 'Invalid link.', 'code': 'invalid_token'}, status=404)
 
+        # Check revocation and expiry before pharmacy ownership checks to ensure correct status codes
+        if share.status == ShareStatus.REVOKED or share.revoked_at is not None:
+            return Response({'detail': 'This link was revoked.', 'code': 'revoked'}, status=410)
+        if not share.is_active or share.status == ShareStatus.EXPIRED:
+            return Response({'detail': 'This link has expired.', 'code': 'expired'}, status=410)
+
+        rx = share.prescription
+        if rx.is_expired or rx.status == PrescriptionStatus.EXPIRED:
+            return Response({'detail': 'This prescription has expired.', 'code': 'prescription_expired'}, status=410)
+
         user = request.user
         is_owner = share.prescription and _can_view(user, share.prescription)
         if not is_owner:
@@ -416,24 +455,15 @@ class ShareTokenView(APIView):
             if share.pharmacy_id and share.pharmacy_id != profile.id:
                 return Response({'detail': 'Invalid link.', 'code': 'invalid_token'}, status=404)
 
-        if share.status == ShareStatus.REVOKED or share.revoked_at is not None:
-            return Response({'detail': 'This link was revoked.', 'code': 'revoked'}, status=410)
-        if not share.is_active or share.status == ShareStatus.EXPIRED:
-            return Response({'detail': 'This link has expired.', 'code': 'expired'}, status=410)
-
-        rx = share.prescription
-        if rx.is_expired or rx.status == PrescriptionStatus.EXPIRED:
-            return Response({'detail': 'This prescription has expired.', 'code': 'prescription_expired'}, status=410)
-
         # log every access (owner or pharmacy)
         PrescriptionAccessLog.objects.create(
             share=share, user=user, role=user.active_role)
 
         rx = share.prescription
-        if user.active_role == Role.PHARMACY:
-            return Response({'share_id': share.id,
-                             'expires_at': share.expires_at.isoformat(),
-                             'prescription': PharmacyRxSerializer(rx).data})
-        return Response({'share_id': share.id,
-                         'expires_at': share.expires_at.isoformat(),
-                         'prescription': PrescriptionSerializer(rx).data})
+        rx_data = PharmacyRxSerializer(rx).data if user.active_role == Role.PHARMACY else PrescriptionSerializer(rx).data
+        return Response({
+            'share_id': share.id,
+            'prescription_id': rx.id,
+            'expires_at': share.expires_at.isoformat(),
+            'prescription': rx_data
+        })

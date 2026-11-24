@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, use, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -28,25 +27,27 @@ interface Rx {
   items: RxItem[];
 }
 
-export default function PrescriptionDetail({ params }: { params: { id: string } }) {
+function PrescriptionDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const { id } = use(params);
   const [rx, setRx] = useState<Rx | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api<Rx>(`/prescriptions/${params.id}`)
+    if (!id) return;
+    api<Rx>(`/prescriptions/${id}`)
       .then(setRx)
       .catch(() => setError("Could not load prescription."));
-  }, [params.id]);
+  }, [id]);
 
   async function handleFinalize() {
     if (!window.confirm("Finalize this prescription? It will become immutable.")) return;
     setBusy(true);
     try {
       const items = rx!.items.map((it) => ({ item_id: it.id, confirmed_qty: it.total_qty }));
-      await api(`/prescriptions/${params.id}/finalize`, { method: "POST", body: { items } });
-      const updated = await api<Rx>(`/prescriptions/${params.id}`);
+      await api(`/prescriptions/${id}/finalize`, { method: "POST", body: { items } });
+      const updated = await api<Rx>(`/prescriptions/${id}`);
       setRx(updated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not finalize.");
@@ -60,7 +61,7 @@ export default function PrescriptionDetail({ params }: { params: { id: string } 
     if (!reason) return;
     setBusy(true);
     try {
-      await api(`/prescriptions/${params.id}/revise`, { method: "POST", body: { reason } });
+      await api(`/prescriptions/${id}/revise`, { method: "POST", body: { reason } });
       router.push(`/doctor/prescriptions`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not revise.");
@@ -74,8 +75,8 @@ export default function PrescriptionDetail({ params }: { params: { id: string } 
     if (!reason) return;
     setBusy(true);
     try {
-      await api(`/prescriptions/${params.id}/cancel`, { method: "POST", body: { reason } });
-      const updated = await api<Rx>(`/prescriptions/${params.id}`);
+      await api(`/prescriptions/${id}/cancel`, { method: "POST", body: { reason } });
+      const updated = await api<Rx>(`/prescriptions/${id}`);
       setRx(updated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not cancel.");
@@ -86,147 +87,90 @@ export default function PrescriptionDetail({ params }: { params: { id: string } 
 
   if (rx === null) {
     return (
-      <Shell role="doctor">
-        {error ? (
-          <Card className="mb-6">
-            <p className="p-4 text-sm text-danger">{error}</p>
-            <Button onClick={() => window.location.reload()} size="sm">
-              Retry
-            </Button>
-          </Card>
-        ) : (
-          <div className="flex h-full items-center justify-center p-8">
-            <div className="h-8 w-8 rounded border-border" />
-          </div>
-        )}
-      </Shell>
+      <div className="flex h-full items-center justify-center p-8">
+        <div className="h-8 w-8 rounded border-border" />
+      </div>
     );
   }
 
-  const STATUS_VARIANT: Record<string, string> = {
-    draft: "draft",
-    finalized: "finalized",
-    revised: "finalized",
-    cancelled: "cancelled",
-    expired: "expired",
-    shared: "shared",
-    revoked: "revoked",
-  };
-
   return (
-    <Shell role="doctor">
-      <div className="max-w-3xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">RX-{rx.id}</h1>
-            <p className="text-sm text-ink-secondary">
-              v{rx.version} · {rx.patient_name} · {rx.consultation_date}
-            </p>
+    <div className="max-w-4xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-ink">RX-{rx.id}</h1>
+            <Badge variant={rx.status === "finalized" ? "success" : rx.status === "cancelled" ? "danger" : "neutral"}>
+              {rx.status.toUpperCase()}
+            </Badge>
+            <Badge variant="neutral">v{rx.version}</Badge>
           </div>
-          <div className="flex flex-wrap gap-2.5">
-            <a href={`/api/v1/prescriptions/${rx.id}/pdf`} target="_blank" rel="noopener noreferrer">
-              <Button variant="secondary" size="sm">Download PDF</Button>
-            </a>
-            {rx.status === "draft" && (
-              <Button size="sm" onClick={handleFinalize} loading={busy} disabled={busy}>
-                Finalize
-              </Button>
-            )}
-            {rx.status === "finalized" && (
-              <>
-                <Link href={`/doctor/prescriptions/${rx.id}/share`}>
-                  <Button variant="secondary" size="sm">Share Link</Button>
-                </Link>
-                <Button variant="secondary" size="sm" onClick={handleRevise}>Revise</Button>
-                <Button variant="danger" size="sm" onClick={handleCancel}>Cancel</Button>
-              </>
-            )}
-          </div>
+          <p className="text-sm text-ink-secondary mt-1">
+            {rx.patient_name} · Consulted {rx.consultation_date}
+          </p>
         </div>
 
-        {error && (
-          <Card className="mb-6">
-            <p className="p-4 text-sm text-danger">{error}</p>
-          </Card>
-        )}
-
-        <Card className="mb-6">
-          <h2 className="text-lg font-semibold text-ink mb-4">Prescription details</h2>
-          <dl className="divide-y divide-border space-y-0">
-            <div className="px-6 py-4 flex justify-between">
-              <dt className="text-sm text-ink-secondary">Status</dt>
-              <dd className="text-sm text-ink">
-                <Badge variant={(STATUS_VARIANT[rx.status] || "neutral") as "draft" | "finalized" | "cancelled" | "expired" | "shared" | "revoked" | "danger" | "neutral" | "default" | "success" | "warning"}>
-                  {rx.status.charAt(0).toUpperCase() + rx.status.slice(1)}
-                </Badge>
-              </dd>
-            </div>
-            <div className="px-6 py-4 flex justify-between">
-              <dt className="text-sm text-ink-secondary">Version</dt>
-              <dd className="text-sm text-ink">
-                v{rx.version}
-                {rx.previous_version && ` (supersedes RX-${rx.previous_version})`}
-              </dd>
-            </div>
-            <div className="px-6 py-4 flex justify-between">
-              <dt className="text-sm text-ink-secondary">Consultation date</dt>
-              <dd className="text-sm text-ink">{rx.consultation_date}</dd>
-            </div>
-            <div className="px-6 py-4 flex justify-between">
-              <dt className="text-sm text-ink-secondary">Valid until</dt>
-              <dd className="text-sm text-ink">{rx.valid_until || "—"}</dd>
-            </div>
-            <div className="px-6 py-4 flex justify-between">
-              <dt className="text-sm text-ink-secondary">Signed at</dt>
-              <dd className="text-sm text-ink">{rx.signed_at || "—"}</dd>
-            </div>
-            <div className="px-6 py-4 flex justify-between">
-              <dt className="text-sm text-ink-secondary">Doctor</dt>
-              <dd className="text-sm text-ink">{rx.doctor_name}</dd>
-            </div>
-          </dl>
-        </Card>
-
-        <Card className="mb-6">
-          <h2 className="text-lg font-semibold text-ink mb-4">Items</h2>
-          <ul className="divide-y divide-border">
-            {rx.items.map((it) => (
-              <li key={it.id} className="px-6 py-4">
-                <p className="font-medium text-ink">{it.medicine_name}</p>
-                <p className="text-sm text-ink-secondary">
-                  {it.strength} · {it.dosage_form} ·
-                  M {it.morning} / A {it.afternoon} / N {it.night} ·
-                  {it.meal_timing.replace(/_/g, " ")} ·
-                  {it.duration_days} days
-                </p>
-                <p className="text-sm text-ink">
-                  Total qty: {it.total_qty} {it.dosage_form === "tablet" || it.dosage_form === "capsule" ? "tablets" : ""}
-                </p>
-                {it.instructions && <p className="text-sm text-ink-secondary">Note: {it.instructions}</p>}
-              </li>
-            ))}
-          </ul>
-        </Card>
-
-        {rx.notes && (
-          <Card className="mb-6">
-            <h2 className="text-lg font-semibold text-ink mb-4">Notes</h2>
-            <p className="p-4 text-sm text-ink-secondary bg-bg-elevated rounded border border-border">
-              {rx.notes}
-            </p>
-          </Card>
-        )}
-
-        {rx.status === "finalized" && (
-          <Card className="mb-6">
-            <h2 className="text-lg font-semibold text-ink mb-4">Share</h2>
-            <p className="text-sm text-ink-secondary mb-4">Share this prescription with a pharmacy.</p>
-            <Button asChild>
-              <Link href={`/doctor/prescriptions/${rx.id}/share`}>Create share link</Link>
+        <div className="flex flex-wrap gap-2">
+          {rx.status === "draft" && (
+            <Button onClick={handleFinalize} loading={busy} disabled={busy}>
+              Finalize & sign
             </Button>
-          </Card>
-        )}
+          )}
+          {rx.status === "finalized" && (
+            <>
+              <Button asChild>
+                <Link href={`/doctor/prescriptions/${id}/share`}>Share link</Link>
+              </Button>
+              <Button variant="secondary" onClick={handleRevise} loading={busy} disabled={busy}>
+                Revise (v{rx.version + 1})
+              </Button>
+              <Button variant="danger" onClick={handleCancel} loading={busy} disabled={busy}>
+                Cancel prescription
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" asChild>
+            <a href={`/api/v1/prescriptions/${id}/pdf`} target="_blank" rel="noreferrer">
+              Download PDF
+            </a>
+          </Button>
+        </div>
       </div>
+
+      {error && (
+        <Card className="mb-6">
+          <p className="p-4 text-sm text-danger">{error}</p>
+        </Card>
+      )}
+
+      <Card className="mb-6 p-6">
+        <h2 className="text-lg font-semibold text-ink mb-4">Prescribed medicines</h2>
+        <div className="divide-y divide-border">
+          {rx.items.map((it) => (
+            <div key={it.id} className="py-3 flex justify-between items-center text-sm">
+              <div>
+                <p className="font-medium text-ink">{it.medicine_name}</p>
+                <p className="text-xs text-ink-secondary">
+                  {it.dosage_form} · {it.strength} · {it.instructions}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="font-semibold">{it.total_qty} units</p>
+                <p className="text-xs text-ink-secondary">{it.duration_days} days</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+export default function PrescriptionDetail({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Shell role="doctor">
+      <Suspense fallback={<div className="p-8 text-xs text-ink-secondary">Loading prescription…</div>}>
+        <PrescriptionDetailInner params={params} />
+      </Suspense>
     </Shell>
   );
 }

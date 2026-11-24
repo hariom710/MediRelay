@@ -34,7 +34,7 @@ class PatientListCreateView(APIView):
             'email': p.user.email,
             'date_of_birth': p.date_of_birth.isoformat() if p.date_of_birth else None,
             'allergies': p.allergies,
-            'has_account': True,
+            'has_account': not p.user.email.endswith('@medirelay.local'),
         } for p in qs[:100]]
         return Response(rows)
 
@@ -43,6 +43,14 @@ class PatientListCreateView(APIView):
         if not name:
             return Response({'detail': 'name is required.', 'code': 'validation_error'},
                             status=400)
+        dob = request.data.get('date_of_birth')
+        if dob:
+            try:
+                from datetime import date
+                dob = date.fromisoformat(str(dob))
+            except (ValueError, TypeError):
+                return Response({'detail': 'date_of_birth must be in YYYY-MM-DD format.', 'code': 'validation_error'}, status=400)
+
         # v1: doctor-created patient gets a placeholder account they can claim later
         import secrets
         from django.contrib.auth import get_user_model
@@ -56,7 +64,7 @@ class PatientListCreateView(APIView):
         user.save()
         profile = PatientProfile.objects.create(
             user=user, created_by=request.user,
-            date_of_birth=request.data.get('date_of_birth') or None,
+            date_of_birth=dob or None,
             gender=request.data.get('gender', ''),
             allergies=request.data.get('allergies', ''))
         record(request.user, 'patient.create', 'patient', profile.id, {}, request)

@@ -148,10 +148,14 @@ class SwitchRoleView(APIView):
         if role not in request.user.role_names:
             return Response({'detail': 'You do not hold that role.', 'code': 'role_not_held'},
                             status=403)
+        old_role = request.user.active_role
         # Fix (i): Cycle session key to prevent session fixation across role/privilege changes
         request.session.cycle_key()
         request.user.active_role = role
         request.user.save(update_fields=['active_role'])
+        from audit.services import record
+        record(request.user, 'auth.switch_role', 'user', request.user.id,
+               {'old_role': old_role, 'new_role': role}, request)
         return Response(UserSerializer(request.user).data)
 
 
@@ -289,26 +293,34 @@ class PharmacyDashboardView(APIView):
                   .filter(revoked_at__isnull=True, expires_at__gt=now,
                           pharmacy__isnull=True))
         shares = shares.distinct()
+        from audit.models import PrescriptionAccessLog
+        valid_shares = [
+            s for s in shares.select_related('prescription')
+            if s.prescription.status == PrescriptionStatus.FINALIZED
+            and not s.prescription.is_expired
+            and s.is_active
+        ]
         new_requests = 0
         recent_requests = []
-        for share in shares[:10]:
+        for share in valid_shares:
             rx = share.prescription
-            if rx.status != PrescriptionStatus.FINALIZED:
-                continue
             existing = Quotation.objects.filter(prescription=rx, pharmacy=profile).first()
             if existing is None:
                 new_requests += 1
-            recent_requests.append({
-                'share_id': share.id,
-                'prescription_id': rx.id,
-                'opened': share.opened_at is not None if hasattr(share, 'opened_at') else False,
-                'expires_at': share.expires_at.isoformat(),
-            })
+            if len(recent_requests) < 10:
+                has_accessed = PrescriptionAccessLog.objects.filter(share=share, user=request.user).exists()
+                recent_requests.append({
+                    'share_id': share.id,
+                    'prescription_id': rx.id,
+                    'opened': has_accessed,
+                    'expires_at': share.expires_at.isoformat(),
+                })
 
-        # Quotations awaiting decision
+        # Quotations awaiting decision (excluding expired)
         awaiting = Quotation.objects.filter(
             pharmacy=profile,
-            status__in=[QuotationStatus.SUBMITTED, QuotationStatus.VIEWED]
+            status__in=[QuotationStatus.SUBMITTED, QuotationStatus.VIEWED],
+            valid_until__gte=timezone.now()
         ).count()
 
         # Pending fulfillments
@@ -327,7 +339,7 @@ class PharmacyDashboardView(APIView):
         expiring = 0
         for item in profile.inventory_items.prefetch_related('batches').all():
             for b in item.batches.all():
-                if b.expiry_date <= soon and b.expiry_date >= today:
+                if b.qty > 0 and b.status == 'active' and today <= b.expiry_date <= soon:
                     expiring += 1
 
         # Recent orders

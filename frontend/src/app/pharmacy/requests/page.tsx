@@ -34,9 +34,11 @@ export default function RequestsPage() {
     setBusy(true);
     setVerifyError("");
     try {
-      const result = await api<{ share_id: number; prescription_id: number }>(`/shares/${token.trim()}`);
+      const result = await api<any>(`/shares/${token.trim()}`);
       if (result) {
-        setRows((prev) => prev ? [...prev, { share_id: result.share_id, prescription_id: result.prescription_id, opened: true, expires_at: "" }] : [{ share_id: result.share_id, prescription_id: result.prescription_id, opened: true, expires_at: "" }]);
+        const rxId = result.prescription_id || result.prescription?.id || result.id;
+        const shId = result.share_id || result.id || 0;
+        setRows((prev) => prev ? [...prev, { share_id: shId, prescription_id: rxId, opened: true, expires_at: "" }] : [{ share_id: shId, prescription_id: rxId, opened: true, expires_at: "" }]);
         setToken("");
       }
     } catch (err: unknown) {

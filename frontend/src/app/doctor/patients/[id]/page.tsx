@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, use, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -21,27 +20,29 @@ interface Patient {
   allergies: string;
 }
 
-export default function PatientDetail({ params }: { params: { id: string } }) {
+function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const { id } = use(params);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [prescriptions, setPrescriptions] = useState<Prescription[] | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    api<Patient>(`/patients/${params.id}`)
+    if (!id) return;
+    api<Patient>(`/patients/${id}`)
       .then(setPatient)
       .catch(() => setError("Could not load patient."));
     api<Prescription[]>(`/prescriptions`)
-      .then((rx) => setPrescriptions(rx.filter((p) => p.patient === Number(params.id))))
+      .then((rx) => setPrescriptions(rx.filter((p) => p.patient === Number(id))))
       .catch(() => {});
-  }, [params.id]);
+  }, [id]);
 
   async function handleDelete() {
     if (!window.confirm("Delete this patient? This cannot be undone.")) return;
     setDeleting(true);
     try {
-      await api(`/patients/${params.id}`, { method: "DELETE" });
+      await api(`/patients/${id}`, { method: "DELETE" });
       router.push("/doctor/patients");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not delete patient.");
@@ -50,19 +51,9 @@ export default function PatientDetail({ params }: { params: { id: string } }) {
     }
   }
 
-  if (patient === null && !error) {
-    return (
-      <Shell role="doctor">
-        <div className="flex h-full items-center justify-center p-8">
-          <div className="h-8 w-8 rounded border-border" />
-        </div>
-      </Shell>
-    );
-  }
-
   return (
     <Shell role="doctor">
-      <div className="max-w-3xl">
+      <div className="max-w-4xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">{patient?.name}</h1>
@@ -70,7 +61,7 @@ export default function PatientDetail({ params }: { params: { id: string } }) {
           </div>
           <div className="flex gap-3">
             <Button asChild>
-              <Link href={`/doctor/prescriptions/new?patient=${params.id}`}>
+              <Link href={`/doctor/prescriptions/new?patient=${id}`}>
                 New prescription
               </Link>
             </Button>
@@ -90,62 +81,99 @@ export default function PatientDetail({ params }: { params: { id: string } }) {
         {error && (
           <Card className="mb-6">
             <p className="p-4 text-sm text-danger">{error}</p>
+            <Button onClick={() => window.location.reload()} size="sm">
+              Retry
+            </Button>
           </Card>
         )}
 
+        {patient === null && !error && (
+          <div className="flex h-full items-center justify-center p-8">
+            <div className="h-8 w-8 rounded border-border" />
+          </div>
+        )}
+
         {patient && (
-          <>
-            <Card className="mb-6">
-              <h2 className="text-lg font-semibold text-ink mb-4">Details</h2>
-              <dl className="divide-y divide-border space-y-0">
-                <div className="px-6 py-4 flex justify-between">
-                  <dt className="text-sm text-ink-secondary">Date of birth</dt>
-                  <dd className="text-sm text-ink">
-                    {patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString("en-GB") : "—"}
-                  </dd>
-                </div>
-                <div className="px-6 py-4 flex justify-between">
-                  <dt className="text-sm text-ink-secondary">Gender</dt>
-                  <dd className="text-sm text-ink">{patient.gender || "—"}</dd>
-                </div>
-                <div className="px-6 py-4 flex justify-between">
-                  <dt className="text-sm text-ink-secondary">Blood group</dt>
-                  <dd className="text-sm text-ink">{patient.blood_group || "—"}</dd>
-                </div>
-                <div className="px-6 py-4 flex justify-between">
-                  <dt className="text-sm text-ink-secondary">Allergies</dt>
-                  <dd className="text-sm text-ink">
-                    {patient.allergies || "None recorded"}
-                  </dd>
-                </div>
-              </dl>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <Card>
+              <div className="p-6">
+                <h2 className="text-lg font-semibold text-ink mb-4">Patient details</h2>
+                <dl className="space-y-3">
+                  <div>
+                    <dt className="text-xs text-ink-secondary uppercase tracking-wider">Date of birth</dt>
+                    <dd className="text-sm font-medium text-ink">{patient.date_of_birth || "Not set"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-ink-secondary uppercase tracking-wider">Gender</dt>
+                    <dd className="text-sm font-medium text-ink">{patient.gender || "Not set"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-ink-secondary uppercase tracking-wider">Blood group</dt>
+                    <dd className="text-sm font-medium text-ink">{patient.blood_group || "Not set"}</dd>
+                  </div>
+                </dl>
+              </div>
             </Card>
 
             <Card>
-              <h2 className="text-lg font-semibold text-ink mb-4">Prescription history</h2>
-              {prescriptions === null ? (
-                <div className="px-6 py-8 text-center text-ink-secondary">Loading…</div>
-              ) : prescriptions && prescriptions.length === 0 ? (
-                <p className="px-6 py-8 text-center text-ink-secondary">No prescriptions.</p>
-              ) : (
-                <ul className="divide-y divide-border">
-                  {prescriptions.map((p) => (
-                    <li key={p.id} className="px-6 py-4 flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-ink">RX-{p.id}</p>
-                        <p className="text-xs text-ink-secondary">
-                          {p.consultation_date} · v{p.version}
-                        </p>
-                      </div>
-                      <Badge variant="neutral">{p.status}</Badge>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <div className="p-6">
+                <h2 className="text-lg font-semibold text-ink mb-4">Allergies & alerts</h2>
+                {patient.allergies ? (
+                  <div className="rounded border border-warning/30 bg-warning/10 p-3 text-sm text-warning font-medium">
+                    {patient.allergies}
+                  </div>
+                ) : (
+                  <p className="text-sm text-ink-secondary">No known allergies recorded.</p>
+                )}
+              </div>
             </Card>
-          </>
+          </div>
         )}
+
+        <div>
+          <h2 className="text-lg font-semibold text-ink mb-4">Prescriptions</h2>
+          {prescriptions === null ? (
+            <p className="text-sm text-ink-secondary">Loading prescriptions…</p>
+          ) : prescriptions.length === 0 ? (
+            <Card>
+              <p className="p-6 text-sm text-ink-secondary text-center">
+                No prescriptions on file for this patient.
+              </p>
+            </Card>
+          ) : (
+            <Card className="overflow-hidden">
+              <ul className="divide-y divide-border">
+                {prescriptions.map((rx) => (
+                  <li key={rx.id} className="p-4 flex items-center justify-between">
+                    <div>
+                      <span className="font-medium text-ink">RX-{rx.id}</span>
+                      <span className="ml-2 text-xs text-ink-secondary">
+                        {rx.consultation_date} · {rx.items?.length ?? 0} item(s)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant={rx.status === "finalized" ? "success" : rx.status === "cancelled" ? "danger" : "neutral"}>
+                        {rx.status.toUpperCase()}
+                      </Badge>
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/doctor/prescriptions/${rx.id}`}>View</Link>
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </div>
       </div>
     </Shell>
+  );
+}
+
+export default function PatientDetail({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<div className="p-8 text-xs text-ink-secondary">Loading patient…</div>}>
+      <PatientDetailInner params={params} />
+    </Suspense>
   );
 }
