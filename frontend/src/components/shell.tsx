@@ -64,12 +64,24 @@ export default function Shell({
   useEffect(() => {
     let cancelled = false;
     api<Me>("/auth/me")
-      .then((m) => {
+      .then(async (m) => {
         if (cancelled) return;
         if (!m.roles.includes(role)) {
           router.replace("/");
         } else {
-          setMe(m);
+          if (m.active_role !== role) {
+            try {
+              const switched = await api<Me>("/auth/switch-role", {
+                method: "POST",
+                body: { role },
+              });
+              if (!cancelled) setMe(switched);
+            } catch {
+              if (!cancelled) setMe(m);
+            }
+          } else {
+            setMe(m);
+          }
         }
       })
       .catch(() => {
@@ -124,10 +136,18 @@ export default function Shell({
 
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="tap-interactive p-2 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--text-secondary)] text-xs"
+          className="tap-interactive p-2 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--text-secondary)] text-xs flex items-center justify-center"
           aria-label="Toggle navigation menu"
         >
-          {mobileMenuOpen ? "✕" : "☰"}
+          {mobileMenuOpen ? (
+            <svg className="w-4 h-4 stroke-current stroke-2" fill="none" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 stroke-current stroke-2" fill="none" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          )}
         </button>
       </div>
 

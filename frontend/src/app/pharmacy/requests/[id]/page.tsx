@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-
-import { useEffect, useState } from "react";
+import { useEffect, useState, use, Suspense } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -35,79 +34,82 @@ interface RxDetail {
   items: RxItem[];
 }
 
-export default function RequestDetail({ params }: { params: { id: string } }) {
+function RequestDetailInner({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [rx, setRx] = useState<RxDetail | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // The share token comes from the URL or is passed as a param
-    // For now, we'll try to fetch by prescription id
-    api<RxDetail>(`/prescriptions/${params.id}`)
+    if (!id) return;
+    api<RxDetail>(`/prescriptions/${id}`)
       .then(setRx)
       .catch(() => setError("Could not load prescription."));
-  }, [params.id]);
+  }, [id]);
 
   if (rx === null && !error) {
     return (
-      <Shell role="pharmacy">
-        <div className="flex h-full items-center justify-center p-8">
-          <div className="h-8 w-8 rounded border-border" />
-        </div>
-      </Shell>
+      <div className="flex h-full items-center justify-center p-8">
+        <div className="h-8 w-8 rounded border-border" />
+      </div>
     );
   }
 
   return (
-    <Shell role="pharmacy">
-      <div className="max-w-3xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">RX-{rx?.id}</h1>
-            <p className="text-sm text-ink-secondary">
-              {rx?.patient_display} · {rx?.consultation_date} · v{rx?.version}
-            </p>
+    <div className="max-w-4xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight text-ink">RX-{rx?.id}</h1>
+            <Badge variant="finalized">v{rx?.version}</Badge>
+            {rx?.allergy_flag && <Badge variant="danger">Allergy Alert</Badge>}
           </div>
-          <Button asChild>
-            <Link href={`/pharmacy/quotations/new?rx=${rx?.id}`}>Create quotation</Link>
-          </Button>
+          <p className="text-sm text-ink-secondary mt-1">
+            Patient: {rx?.patient_display} {rx?.age ? `(${rx.age} yrs)` : ""} · Consulted: {rx?.consultation_date}
+          </p>
         </div>
-
-        {error && (
-          <Card className="mb-6">
-            <p className="p-4 text-sm text-danger">{error}</p>
-          </Card>
-        )}
-
-        {rx && (
-          <>
-            {rx.allergy_flag && (
-              <Card className="mb-6">
-                <p className="p-4 text-sm text-danger">Patient has recorded allergies. Check before dispensing.</p>
-              </Card>
-            )}
-
-            <Card className="mb-6">
-              <h2 className="text-lg font-semibold text-ink mb-4">Prescription items</h2>
-              <ul className="divide-y divide-border">
-                {rx.items.map((it) => (
-                  <li key={it.id} className="px-6 py-4">
-                    <p className="font-medium text-ink">{it.medicine_name}</p>
-                    <p className="text-sm text-ink-secondary">
-                      {it.strength} · {it.dosage_form} ·
-                      M {it.morning} / A {it.afternoon} / N {it.night} ·
-                      {it.meal_timing.replace(/_/g, " ")} ·
-                      {it.duration_days} days
-                    </p>
-                    <p className="text-sm text-ink">Total qty: {it.total_qty}</p>
-                    {it.instructions && <p className="text-sm text-ink-secondary">Note: {it.instructions}</p>}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </>
-        )}
+        <Button asChild>
+          <Link href={`/pharmacy/quotations/new?prescription_id=${id}`}>Create Quotation</Link>
+        </Button>
       </div>
+
+      {error && (
+        <Card className="mb-6">
+          <p className="p-4 text-sm text-danger">{error}</p>
+        </Card>
+      )}
+
+      {rx && (
+        <Card className="p-6">
+          <h2 className="text-lg font-semibold text-ink mb-4">Prescription Items</h2>
+          <div className="divide-y divide-border">
+            {rx.items.map((it) => (
+              <div key={it.id} className="py-3 flex justify-between items-center text-sm">
+                <div>
+                  <p className="font-medium text-ink">{it.medicine_name}</p>
+                  <p className="text-xs text-ink-secondary">
+                    {it.dosage_form} · {it.strength} · {it.instructions}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold">{it.total_qty} units</p>
+                  <p className="text-xs text-ink-secondary">{it.duration_days} days</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+export default function RequestDetail({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Shell role="pharmacy">
+      <Suspense fallback={<div className="p-8 text-xs text-ink-secondary">Loading prescription request…</div>}>
+        <RequestDetailInner params={params} />
+      </Suspense>
     </Shell>
   );
 }

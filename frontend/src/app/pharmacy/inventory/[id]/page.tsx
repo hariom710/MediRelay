@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use, Suspense } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import Shell from "@/components/shell";
 import { type InventoryItem, type Batch } from "@/lib/types";
 
-export default function InventoryDetail({ params }: { params: { id: string } }) {
+function InventoryDetailInner({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,10 +25,11 @@ export default function InventoryDetail({ params }: { params: { id: string } }) 
   const [adjustReason, setAdjustReason] = useState("");
 
   useEffect(() => {
-    api<InventoryItem>(`/pharmacy/inventory/${params.id}`)
+    if (!id) return;
+    api<InventoryItem>(`/pharmacy/inventory/${id}`)
       .then(setItem)
       .catch(() => setError("Could not load inventory item."));
-  }, [params.id]);
+  }, [id]);
 
   async function handleAddBatch() {
     if (!batchNumber || !expiryDate || !qty) {
@@ -37,11 +39,11 @@ export default function InventoryDetail({ params }: { params: { id: string } }) 
     setBusy(true);
     setError("");
     try {
-      await api(`/pharmacy/inventory/${params.id}/batches`, {
+      await api(`/pharmacy/inventory/${id}/batches`, {
         method: "POST",
         body: { batch_number: batchNumber, expiry_date: expiryDate, qty: Number(qty), mrp: mrp || "0", purchase_price: purchasePrice || "0" },
       });
-      const updated = await api<InventoryItem>(`/pharmacy/inventory/${params.id}`);
+      const updated = await api<InventoryItem>(`/pharmacy/inventory/${id}`);
       setItem(updated);
       setShowBatchForm(false);
       setBatchNumber("");
@@ -64,11 +66,11 @@ export default function InventoryDetail({ params }: { params: { id: string } }) 
     setBusy(true);
     setError("");
     try {
-      await api(`/pharmacy/inventory/${params.id}/adjust/${adjustBatch}`, {
+      await api(`/pharmacy/inventory/${id}/adjust/${adjustBatch}`, {
         method: "POST",
         body: { quantity: Number(adjustQty), reason: adjustReason },
       });
-      const updated = await api<InventoryItem>(`/pharmacy/inventory/${params.id}`);
+      const updated = await api<InventoryItem>(`/pharmacy/inventory/${id}`);
       setItem(updated);
       setAdjustBatch(null);
       setAdjustQty("");
@@ -85,8 +87,8 @@ export default function InventoryDetail({ params }: { params: { id: string } }) 
     setBusy(true);
     setError("");
     try {
-      await api(`/pharmacy/inventory/${params.id}/expire/${batchId}`, { method: "POST" });
-      const updated = await api<InventoryItem>(`/pharmacy/inventory/${params.id}`);
+      await api(`/pharmacy/inventory/${id}/expire/${batchId}`, { method: "POST" });
+      const updated = await api<InventoryItem>(`/pharmacy/inventory/${id}`);
       setItem(updated);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not write off batch.");
@@ -100,7 +102,7 @@ export default function InventoryDetail({ params }: { params: { id: string } }) 
     setBusy(true);
     setError("");
     try {
-      await api(`/pharmacy/inventory/${params.id}`, { method: "DELETE" });
+      await api(`/pharmacy/inventory/${id}`, { method: "DELETE" });
       window.location.href = "/pharmacy/inventory";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not delete item.");
@@ -111,104 +113,98 @@ export default function InventoryDetail({ params }: { params: { id: string } }) 
 
   if (item === null && !error) {
     return (
-      <Shell role="pharmacy">
-        <div className="flex h-full items-center justify-center p-8">
-          <div className="h-8 w-8 rounded border-border" />
-        </div>
-      </Shell>
+      <div className="flex h-full items-center justify-center p-8">
+        <div className="h-8 w-8 rounded border-border" />
+      </div>
     );
   }
 
   return (
-    <Shell role="pharmacy">
-      <div className="max-w-3xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">{item?.medicine_name}</h1>
-            <p className="text-sm text-ink-secondary">Selling price: ₹{item?.selling_price} · Available: {item?.available_qty}</p>
-          </div>
-          <div className="flex gap-3">
-            <Button variant="danger" onClick={handleDelete} loading={busy} disabled={busy}>
-              Delete
-            </Button>
-          </div>
-        </div>
-
-        {error && (
-          <Card className="mb-6">
-            <p className="p-4 text-sm text-danger">{error}</p>
-          </Card>
-        )}
-
-        {/* Batches */}
-        <Card className="mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-ink">Batches</h2>
-            <Button size="sm" onClick={() => setShowBatchForm(!showBatchForm)}>
-              {showBatchForm ? "Cancel" : "Add batch"}
-            </Button>
-          </div>
-
-          {showBatchForm && (
-            <div className="mb-4 p-4 rounded border border-border bg-bg-elevated space-y-3">
-              <Input label="Batch number" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} />
-              <Input label="Expiry date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
-              <Input label="Quantity" type="number" value={qty} onChange={(e) => setQty(e.target.value)} />
-              <Input label="MRP" type="number" step="0.01" value={mrp} onChange={(e) => setMrp(e.target.value)} />
-              <Input label="Purchase price" type="number" step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
-              <Button onClick={handleAddBatch} loading={busy} disabled={busy} size="sm">Add</Button>
-            </div>
-          )}
-
-          {item?.batches.length === 0 ? (
-            <p className="px-6 py-8 text-center text-ink-secondary">No batches yet.</p>
-          ) : (
-            <ul className="divide-y divide-border">
-              {item?.batches.map((b) => (
-                <li key={b.id} className="px-6 py-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-ink">Batch {b.batch_number}</p>
-                      <p className="text-xs text-ink-secondary">
-                        Expiry: {b.expiry_date} · Qty: {b.qty} · MRP: ₹{b.mrp} · Purchase: ₹{b.purchase_price}
-                      </p>
-                      {b.is_expired && <Badge variant="danger" className="mt-1">Expired</Badge>}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => setAdjustBatch(b.id)}>
-                        Adjust
-                      </Button>
-                      {b.is_expired && b.qty > 0 && (
-                        <Button size="sm" variant="danger" onClick={() => handleExpire(b.id)} disabled={busy}>
-                          Write off
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  {adjustBatch === b.id && (
-                    <div className="mt-3 p-3 rounded border border-border bg-bg-elevated space-y-2">
-                      <Input label="Quantity (+/-)" type="number" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
-                      <Input label="Reason" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} placeholder="damage, count correction, etc." />
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={handleAdjust} loading={busy} disabled={busy}>Apply</Button>
-                        <Button size="sm" variant="ghost" onClick={() => setAdjustBatch(null)}>Cancel</Button>
-                      </div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        {/* Stock ledger */}
-        <Card>
-          <h2 className="text-lg font-semibold text-ink mb-4">Stock ledger</h2>
-          <p className="px-6 py-4 text-sm text-ink-secondary">
-            Stock movements are recorded automatically. View the full ledger via the API.
+    <div className="max-w-4xl">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-ink mb-2">
+            {item?.medicine_name || "Medicine Item"}
+          </h1>
+          <p className="text-sm text-ink-secondary">
+            {item?.dosage_form || "Dosage"} · {item?.strength || "Strength"}
           </p>
-        </Card>
+        </div>
+        <div className="flex gap-3">
+          <Button onClick={() => setShowBatchForm(!showBatchForm)}>
+            {showBatchForm ? "Cancel batch" : "Add batch"}
+          </Button>
+          <Button variant="danger" onClick={handleDelete} loading={busy} disabled={busy}>
+            Delete item
+          </Button>
+        </div>
       </div>
+
+      {error && (
+        <Card className="mb-6">
+          <p className="p-4 text-sm text-danger">{error}</p>
+        </Card>
+      )}
+
+      {showBatchForm && (
+        <Card className="mb-6 p-6">
+          <h2 className="text-base font-semibold mb-4">Add new medicine batch</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Batch Number" value={batchNumber} onChange={(e) => setBatchNumber(e.target.value)} required />
+            <Input label="Expiry Date" type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
+            <Input label="Quantity" type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} required />
+            <Input label="MRP (₹)" type="number" step="0.01" value={mrp} onChange={(e) => setMrp(e.target.value)} />
+            <Input label="Purchase Price (₹)" type="number" step="0.01" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={handleAddBatch} loading={busy} disabled={busy}>Save batch</Button>
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold text-ink mb-4">Batches (FEFO order)</h2>
+        {item?.batches && item.batches.length > 0 ? (
+          <div className="divide-y divide-border">
+            {item.batches.map((b) => (
+              <div key={b.id} className="py-3 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-semibold">{b.batch_number}</span>
+                  <span className="ml-3 text-ink-secondary">Exp: {b.expiry_date}</span>
+                  <span className="ml-3 font-mono font-bold">{b.qty} in stock</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={b.status === "active" ? "success" : b.status === "depleted" ? "neutral" : "danger"}>
+                    {b.status.toUpperCase()}
+                  </Badge>
+                  {b.status === "active" && (
+                    <Button size="sm" variant="ghost" onClick={() => setAdjustBatch(b.id)}>
+                      Adjust
+                    </Button>
+                  )}
+                  {b.is_expired && b.status !== "written_off" && (
+                    <Button size="sm" variant="danger" onClick={() => handleExpire(b.id)}>
+                      Write off
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-ink-secondary">No active batches for this medicine.</p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+export default function InventoryDetail({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Shell role="pharmacy">
+      <Suspense fallback={<div className="p-8 text-xs text-ink-secondary">Loading inventory…</div>}>
+        <InventoryDetailInner params={params} />
+      </Suspense>
     </Shell>
   );
 }

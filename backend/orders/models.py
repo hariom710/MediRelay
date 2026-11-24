@@ -10,6 +10,8 @@ class OrderStatus(models.TextChoices):
 
 class FulfillmentStatus(models.TextChoices):
     PENDING = 'pending', 'Pending'
+    IN_PROGRESS = 'in_progress', 'In progress'
+    READY_FOR_PICKUP = 'ready_for_pickup', 'Ready for pickup'
     FULFILLED = 'fulfilled', 'Fulfilled'
     CANCELLED = 'cancelled', 'Cancelled'
 
@@ -43,6 +45,22 @@ class Order(StateMachineMixin, models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def complete(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            OrderStatus.COMPLETED,
+            actor=actor,
+            reason=reason or 'All fulfillments completed',
+            request=request
+        )
+
+    def cancel(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            OrderStatus.CANCELLED,
+            actor=actor,
+            reason=reason or 'Order cancelled',
+            request=request
+        )
+
 
 class OrderFulfillment(StateMachineMixin, models.Model):
     """One per pharmacy in the order. Each pharmacy invoices separately."""
@@ -54,7 +72,20 @@ class OrderFulfillment(StateMachineMixin, models.Model):
                               default=FulfillmentStatus.PENDING)
 
     TRANSITIONS = {
-        FulfillmentStatus.PENDING: [FulfillmentStatus.FULFILLED, FulfillmentStatus.CANCELLED],
+        FulfillmentStatus.PENDING: [
+            FulfillmentStatus.IN_PROGRESS,
+            FulfillmentStatus.FULFILLED,
+            FulfillmentStatus.CANCELLED,
+        ],
+        FulfillmentStatus.IN_PROGRESS: [
+            FulfillmentStatus.READY_FOR_PICKUP,
+            FulfillmentStatus.FULFILLED,
+            FulfillmentStatus.CANCELLED,
+        ],
+        FulfillmentStatus.READY_FOR_PICKUP: [
+            FulfillmentStatus.FULFILLED,
+            FulfillmentStatus.CANCELLED,
+        ],
         FulfillmentStatus.FULFILLED: [],
         FulfillmentStatus.CANCELLED: [],
     }
@@ -64,6 +95,38 @@ class OrderFulfillment(StateMachineMixin, models.Model):
 
     class Meta:
         unique_together = [('order', 'pharmacy')]
+
+    def start_processing(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            FulfillmentStatus.IN_PROGRESS,
+            actor=actor,
+            reason=reason or 'Pharmacy started preparing fulfillment',
+            request=request
+        )
+
+    def mark_ready(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            FulfillmentStatus.READY_FOR_PICKUP,
+            actor=actor,
+            reason=reason or 'Order ready for pharmacy pickup',
+            request=request
+        )
+
+    def fulfill(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            FulfillmentStatus.FULFILLED,
+            actor=actor,
+            reason=reason or 'Order fulfillment completed',
+            request=request
+        )
+
+    def cancel(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            FulfillmentStatus.CANCELLED,
+            actor=actor,
+            reason=reason or 'Fulfillment cancelled',
+            request=request
+        )
 
 
 class OrderItem(models.Model):
@@ -99,3 +162,27 @@ class Invoice(StateMachineMixin, models.Model):
 
     class Meta:
         ordering = ['-issued_at']
+
+    def mark_paid(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            PaymentStatus.PAID,
+            actor=actor,
+            reason=reason or 'Invoice marked paid',
+            request=request
+        )
+
+    def mark_failed(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            PaymentStatus.FAILED,
+            actor=actor,
+            reason=reason or 'Payment failed',
+            request=request
+        )
+
+    def refund(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            PaymentStatus.REFUNDED,
+            actor=actor,
+            reason=reason or 'Invoice refunded',
+            request=request
+        )

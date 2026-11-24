@@ -12,7 +12,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.3-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Python](https://img.shields.io/badge/Python-3.12%20%7C%203.13-3776AB?logo=python&logoColor=white)](https://www.python.org)
 [![Database](https://img.shields.io/badge/Database-SQLite%20(dev)%20%2F%20PostgreSQL%20(prod)-4169E1?logo=postgresql&logoColor=white)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-150%20passed-brightgreen?logo=pytest&logoColor=white)](#testing--verification)
+[![Tests](https://img.shields.io/badge/tests-156%20passed-brightgreen?logo=pytest&logoColor=white)](#testing--verification)
 [![License](https://img.shields.io/badge/license-Proprietary%20%2F%20MIT-blue)](#license)
 
 [Features](#features) · [Tech stack](#tech-stack) · [Architecture](#architecture) · [Data flow & state machines](#data-flow--state-machines) · [Installation & setup](#installation--setup) · [Usage walkthrough](#usage-walkthrough) · [Security & privacy](#security-compliance--privacy) · [Testing & verification](#testing--verification) · [Limitations & known gaps](#limitations--known-gaps) · [Roadmap](#roadmap)
@@ -50,7 +50,7 @@ MediRelay uses a **modular Django monolith** paired with a **Next.js App Router*
 
 ### Maturity & Verification Status
 
-MediRelay has a **fully functional, verified core loop (Milestones M0 through M5)** backed by **150 automated tests** in pytest. Every critical release gate — unauthorized access prevention, cross-patient isolation, oversell protection, version immutability, security hardening, and state-machine transitions — is exercised and passing.
+MediRelay has a **fully functional, verified core loop (Milestones M0 through M5)** backed by **156 automated tests** in pytest. Every critical release gate — unauthorized access prevention, cross-patient isolation, oversell protection, version immutability, security hardening, and state-machine transitions — is exercised and passing.
 
 > [!NOTE]
 > In an exhaustive independent codebase audit conducted in November 2026, experimental modules for Tier C features (such as synthetic AI OCR and third-party laboratory stubs) were identified and cleanly segregated. MediRelay makes zero unverified claims: everything documented in this guide is verified by real code and automated test execution.
@@ -172,7 +172,7 @@ MediRelay/
 │   ├── orders/                     # Orders, order fulfillments, restocking, invoicing
 │   ├── audit/                      # Append-only audit logging ledger
 │   ├── notifications/              # In-transaction user notification dispatch
-│   └── tests/                      # 150 passing automated tests covering all release gates & security
+│   └── tests/                      # 156 passing automated tests covering all release gates & security
 ├── frontend/
 │   ├── package.json
 │   ├── next.config.ts
@@ -212,17 +212,26 @@ stateDiagram-v2
 | Entity | Initial State | Allowed Target States | Enforcing Transition Method |
 |:---|:---|:---|:---|
 | **Prescription** | `DRAFT` | `FINALIZED`, `CANCELLED` | `finalize()`, `cancel()` |
-| | `FINALIZED` | `REVISED`, `EXPIRED` | `revise()`, `expire()` |
-| **Quotation** | `DRAFT` | `SUBMITTED`, `CANCELLED` | `submit()`, `cancel()` |
-| | `SUBMITTED` | `ACCEPTED`, `REJECTED`, `EXPIRED` | `accept()`, `reject()`, `expire()` |
-| | `ACCEPTED` | `LOCKED` (Terminal) | `lock()` |
-| **Order** | `PLACED` | `CONFIRMED`, `CANCELLED` | `confirm()`, `cancel()` |
-| | `CONFIRMED` | `FULFILLED`, `CANCELLED` | `fulfill()`, `cancel()` |
-| **Fulfillment** | `PENDING` | `IN_PROGRESS`, `CANCELLED` | `start()`, `cancel()` |
-| | `IN_PROGRESS`| `READY_FOR_PICKUP`, `CANCELLED` | `mark_ready()`, `cancel()` |
+| | `FINALIZED` | `REVISED`, `CANCELLED`, `EXPIRED` | `revise()`, `cancel()`, `expire()` |
+| **PrescriptionShare** | `ACTIVE` | `REVOKED`, `EXPIRED` | `revoke()`, `expire()` |
+| **Quotation** | `DRAFT` | `SUBMITTED` | `submit()` |
+| | `SUBMITTED` | `VIEWED`, `SELECTED`, `REJECTED`, `EXPIRED`, `DRAFT` | `mark_viewed()`, `select()`, `reject()`, `expire()`, `revert_to_draft()` |
+| | `SELECTED` | `SUBMITTED`, `EXPIRED`, `DRAFT` | `revert_to_draft()`, `expire()` |
+| **Order** | `PLACED` | `COMPLETED`, `CANCELLED` | `complete()`, `cancel()` |
+| **OrderFulfillment** | `PENDING` | `IN_PROGRESS`, `FULFILLED`, `CANCELLED` | `start_processing()`, `fulfill()`, `cancel()` |
+| | `IN_PROGRESS`| `READY_FOR_PICKUP`, `FULFILLED`, `CANCELLED` | `mark_ready()`, `fulfill()`, `cancel()` |
 | | `READY_FOR_PICKUP` | `FULFILLED`, `CANCELLED` | `fulfill()`, `cancel()` |
 | **Invoice** | `PENDING` | `PAID`, `FAILED` | `mark_paid()`, `mark_failed()` |
 | | `PAID` | `REFUNDED` | `refund()` |
+| | `FAILED` | `PENDING` | `transition_to(PENDING)` |
+| **MedicineBatch** | `ACTIVE` | `DEPLETED`, `EXPIRED`, `QUARANTINED`, `WRITTEN_OFF` | `deplete()`, `mark_expired()`, `quarantine()`, `write_off()` |
+| | `DEPLETED` | `ACTIVE`, `WRITTEN_OFF` | `reactivate()`, `write_off()` |
+| | `EXPIRED` | `WRITTEN_OFF` | `write_off()` |
+| **Notification** | `UNREAD` | `READ`, `ARCHIVED` | `mark_read()`, `archive()` |
+| | `READ` | `ARCHIVED` | `archive()` |
+| **Doctor / Pharmacy** | `PENDING` | `UNDER_REVIEW`, `VERIFIED`, `REJECTED` | `submit_for_review()`, `verify()`, `reject()` |
+| | `UNDER_REVIEW` | `VERIFIED`, `REJECTED` | `verify()`, `reject()` |
+| | `VERIFIED` | `SUSPENDED` | `suspend()` |
 
 ---
 
@@ -460,7 +469,7 @@ python -m pytest -q
 
 ### Current Test Suite Status
 ```text
-============================= 150 passed in 229.80s =============================
+============================= 156 passed in 204.33s =============================
 ```
 
 ### Release Gates & Hardening Covered by Automated Tests
@@ -513,7 +522,7 @@ In adherence to radical engineering honesty, the following constraints and defer
 ### Phase 1: Core Fulfillment Hardening (Current)
 - [x] Complete M0 to M5 backend core loop.
 - [x] Implement declarative `StateMachineMixin` across all domain models.
-- [x] 150 passing automated tests covering all security, concurrency, and release gates.
+- [x] 156 passing automated tests covering all security, concurrency, and release gates.
 - [x] Apple-grade design system implemented across all portals (HIG typography, glass materials, interactive comparison engine).
 - [x] Comprehensive security audit & hardening report (`docs/SECURITY_REPORT.md`).
 - [x] Zero-dependency local developer quick start with safe dev defaults.

@@ -113,6 +113,31 @@ export default function PatientPrescriptions() {
     }
   }
 
+  const [ordering, setOrdering] = useState(false);
+
+  async function handleOrder(selection: { prescription_item: number; pharmacy: number }[]) {
+    if (!selectedRxId) return;
+    setOrdering(true);
+    setError("");
+    setSuccessMsg("");
+    try {
+      const res = await api<any>("/orders", {
+        method: "POST",
+        body: {
+          prescription_id: selectedRxId,
+          selection,
+        },
+      });
+      setSuccessMsg(`Order #${res.id || "created"} placed successfully! Fulfillments scheduled.`);
+      fetchComparison(selectedRxId);
+    } catch (err) {
+      if (err instanceof ApiError) setError(err.message);
+      else setError("Failed to place order.");
+    } finally {
+      setOrdering(false);
+    }
+  }
+
   const selectedRx = prescriptions?.find((r) => r.id === selectedRxId);
 
   return (
@@ -325,37 +350,75 @@ export default function PatientPrescriptions() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {/* Mode 1 Card */}
                         {comparison.single_best && (
-                          <div className="rounded-[var(--r-xl)] border border-[var(--accent)]/30 bg-[var(--accent-subtle)] p-5">
-                            <Badge variant="finalized" size="sm">
-                              Single Store Winner
-                            </Badge>
-                            <h5 className="mt-2 text-base font-bold text-[var(--text)]">
-                              {comparison.single_best.pharmacy_name}
-                            </h5>
-                            <p className="mt-1 text-2xl font-bold font-mono text-[var(--accent)]">
-                              ₹{comparison.single_best.grand_total}
-                            </p>
-                            <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
-                              Pickup Fee: ₹{comparison.single_best.pickup_fee}
-                            </p>
+                          <div className="rounded-[var(--r-xl)] border border-[var(--accent)]/30 bg-[var(--accent-subtle)] p-5 flex flex-col justify-between">
+                            <div>
+                              <Badge variant="finalized" size="sm">
+                                Single Store Winner
+                              </Badge>
+                              <h5 className="mt-2 text-base font-bold text-[var(--text)]">
+                                {comparison.single_best.pharmacy_name}
+                              </h5>
+                              <p className="mt-1 text-2xl font-bold font-mono text-[var(--accent)]">
+                                ₹{comparison.single_best.grand_total}
+                              </p>
+                              <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
+                                Pickup Fee: ₹{comparison.single_best.pickup_fee}
+                              </p>
+                            </div>
+                            <Button
+                              className="mt-4"
+                              size="sm"
+                              pill
+                              loading={ordering}
+                              onClick={() => {
+                                if (!comparison.single_best) return;
+                                const pid = comparison.single_best.pharmacy_id;
+                                const sel = comparison.single_best.items.map((it) => ({
+                                  prescription_item: it.prescription_item_id,
+                                  pharmacy: pid,
+                                }));
+                                handleOrder(sel);
+                              }}
+                            >
+                              Order Single Store
+                            </Button>
                           </div>
                         )}
 
                         {/* Mode 2 Card */}
                         {comparison.multi_best && (
-                          <div className="rounded-[var(--r-xl)] border border-[var(--success)]/30 bg-[var(--success-subtle)] p-5">
-                            <Badge variant="success" size="sm">
-                              Multi-Store Combination
-                            </Badge>
-                            <h5 className="mt-2 text-base font-bold text-[var(--text)]">
-                              Optimal Combined Split
-                            </h5>
-                            <p className="mt-1 text-2xl font-bold font-mono text-[var(--success)]">
-                              ₹{comparison.multi_best.grand_total}
-                            </p>
-                            <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
-                              Calculated across competing stores
-                            </p>
+                          <div className="rounded-[var(--r-xl)] border border-[var(--success)]/30 bg-[var(--success-subtle)] p-5 flex flex-col justify-between">
+                            <div>
+                              <Badge variant="success" size="sm">
+                                Multi-Store Combination
+                              </Badge>
+                              <h5 className="mt-2 text-base font-bold text-[var(--text)]">
+                                Optimal Combined Split
+                              </h5>
+                              <p className="mt-1 text-2xl font-bold font-mono text-[var(--success)]">
+                                ₹{comparison.multi_best.grand_total}
+                              </p>
+                              <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
+                                Calculated across competing stores
+                              </p>
+                            </div>
+                            <Button
+                              variant="secondary"
+                              className="mt-4"
+                              size="sm"
+                              pill
+                              loading={ordering}
+                              onClick={() => {
+                                if (!comparison.multi_best) return;
+                                const sel = comparison.multi_best.items.map((it) => ({
+                                  prescription_item: it.prescription_item_id,
+                                  pharmacy: it.pharmacy_id,
+                                }));
+                                handleOrder(sel);
+                              }}
+                            >
+                              Order Combined Split
+                            </Button>
                           </div>
                         )}
                       </div>

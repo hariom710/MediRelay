@@ -68,6 +68,8 @@ export interface InventoryItem {
   id: number;
   medicine: number;
   medicine_name: string;
+  dosage_form?: string;
+  strength?: string;
   selling_price: string;
   available_qty: number;
   batches: Batch[];
@@ -80,6 +82,7 @@ export interface Batch {
   qty: number;
   mrp: string;
   purchase_price: string;
+  status: string;
   is_expired: boolean;
 }
 

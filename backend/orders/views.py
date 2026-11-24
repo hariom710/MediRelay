@@ -211,10 +211,12 @@ class InvoiceListView(APIView):
                 'id': inv.id,
                 'invoice_number': inv.invoice_number,
                 'order_id': inv.fulfillment.order_id,
+                'order': inv.fulfillment.order_id,
                 'patient': inv.fulfillment.order.patient.user.get_full_name() or 'Patient',
                 'total': str(inv.fulfillment.subtotal + inv.fulfillment.pickup_fee),
                 'payment_status': inv.payment_status,
                 'issued_at': inv.issued_at.isoformat(),
+                'created_at': inv.issued_at.isoformat(),
             })
         return Response(data)
 
@@ -250,7 +252,7 @@ class FulfillView(APIView):
                              pharmacy=request.user.pharmacy_profile)
         except OrderFulfillment.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-        if fulfillment.status != FulfillmentStatus.PENDING:
+        if fulfillment.status not in (FulfillmentStatus.PENDING, FulfillmentStatus.IN_PROGRESS, FulfillmentStatus.READY_FOR_PICKUP):
             return Response({'detail': 'Fulfillment already processed.',
                              'code': 'not_pending'}, status=409)
 
@@ -259,11 +261,12 @@ class FulfillView(APIView):
             invoice = Invoice.objects.create(
                 fulfillment=fulfillment,
                 invoice_number=f'INV-{timezone.now():%Y%m%d}-'
-                               f'{uuid.uuid4().hex[:6].upper()}')
+                               f'{uuid.uuid4().hex[:8].upper()}')
             order = fulfillment.order
             statuses = set(order.fulfillments.values_list('status', flat=True))
-            if statuses == {FulfillmentStatus.FULFILLED}:
-                order.transition_to(OrderStatus.COMPLETED, actor=request.user, request=request, reason='All fulfillments fulfilled', save=True)
+            if all(st in (FulfillmentStatus.FULFILLED, FulfillmentStatus.CANCELLED) for st in statuses):
+                if FulfillmentStatus.FULFILLED in statuses and order.status == OrderStatus.PLACED:
+                    order.transition_to(OrderStatus.COMPLETED, actor=request.user, request=request, reason='All fulfillments processed', save=True)
 
         record(request.user, 'order.fulfill', 'order', order.id,
                {'fulfillment_id': fulfillment.id, 'invoice': invoice.invoice_number},
@@ -298,30 +301,42 @@ class CancelFulfillmentView(APIView):
                              'code': 'not_pending'}, status=409)
 
         with transaction.atomic():
-            # reverse each order item's FEFO deduction: return qty to the same
-            # earliest-expiry non-expired batches it came from
-            for oi in fulfillment.items.all():
-                inv_item = InventoryItem.objects.filter(
-                    pharmacy=fulfillment.pharmacy, medicine=oi.medicine).first()
-                if not inv_item:
-                    continue
-                target = (inv_item.batches
-                          .filter(expiry_date__gte=timezone.now().date())
-                          .order_by('expiry_date', 'id').first())
-                if target is None:
-                    # every batch is expired — restore into the newest anyway:
-                    # expired stock is unsellable (FEFO filters it), so qty is
-                    # preserved for manual write-off rather than silently lost
-                    target = inv_item.batches.order_by('-expiry_date').first()
-                if target:
-                    restock([(target, oi.qty)], 'order_fulfillment',
-                            fulfillment.id, user)
+            # reverse each order item's FEFO deduction using recorded movements
+            from inventory.models import StockMovement
+            from decimal import Decimal
+            movements = StockMovement.objects.filter(
+                ref_type='order_fulfillment', ref_id=str(fulfillment.id), movement_type='out'
+            )
+            if movements.exists():
+                for m in movements:
+                    restock([(m.batch, abs(m.quantity))], 'order_fulfillment', fulfillment.id, user)
+            else:
+                for oi in fulfillment.items.all():
+                    inv_item = InventoryItem.objects.filter(
+                        pharmacy=fulfillment.pharmacy, medicine=oi.medicine).first()
+                    if not inv_item:
+                        continue
+                    target = (inv_item.batches
+                              .filter(expiry_date__gte=timezone.now().date(), status='active')
+                              .order_by('expiry_date', 'id').first())
+                    if target is None:
+                        target = inv_item.batches.order_by('-expiry_date').first()
+                    if target:
+                        restock([(target, oi.qty)], 'order_fulfillment',
+                                fulfillment.id, user)
 
             fulfillment.transition_to(FulfillmentStatus.CANCELLED, actor=user, request=request, reason='Fulfillment cancelled', save=True)
             order = fulfillment.order
+            cancelled_amount = fulfillment.subtotal + fulfillment.pickup_fee
+            order.total = max(Decimal('0'), order.total - cancelled_amount)
+            order.save(update_fields=['total'])
+
             statuses = set(order.fulfillments.values_list('status', flat=True))
             if statuses == {FulfillmentStatus.CANCELLED}:
                 order.transition_to(OrderStatus.CANCELLED, actor=user, request=request, reason='All fulfillments cancelled', save=True)
+            elif all(st in (FulfillmentStatus.FULFILLED, FulfillmentStatus.CANCELLED) for st in statuses):
+                if FulfillmentStatus.FULFILLED in statuses and order.status == OrderStatus.PLACED:
+                    order.transition_to(OrderStatus.COMPLETED, actor=user, request=request, reason='Remaining fulfillments fulfilled', save=True)
 
             # Re-open quotation so the patient can order again from that quotation
             from quotations.models import Quotation, QuotationStatus

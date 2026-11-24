@@ -8,6 +8,7 @@ urlpatterns = [
     path('quotations/<int:pk>', views.QuotationDetailView.as_view()),
     path('quotations/<int:pk>/submit', views.QuotationSubmitView.as_view()),
     path('quotations/<int:pk>/mark-viewed', views.QuotationMarkViewedView.as_view()),
+    path('quotations/<int:pk>/reject', views.QuotationRejectView.as_view()),
     path('quotations/<int:pk>/revise', views.QuotationReviseView.as_view()),
     path('prescriptions/<int:pk>/quotations',
          views.PrescriptionQuotationsView.as_view()),

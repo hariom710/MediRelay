@@ -97,7 +97,7 @@ export default function HomePage() {
           {/* Test verification metrics */}
           <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-xs text-[var(--text-tertiary)] border-t border-[var(--border)] pt-8">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-[var(--text)] font-mono">135/135</span> passing test gates
+              <span className="font-semibold text-[var(--text)] font-mono">156/156</span> passing test gates
             </div>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[var(--text)]">FEFO</span> atomic inventory locking

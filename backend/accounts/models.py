@@ -91,6 +91,47 @@ class VerificationStateMachineMixin(StateMachineMixin):
         VerificationStatus.REJECTED: [VerificationStatus.UNDER_REVIEW],
     }
 
+    def submit_for_review(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            VerificationStatus.UNDER_REVIEW,
+            actor=actor,
+            reason=reason or 'Submitted for administrative verification',
+            request=request
+        )
+
+    def verify(self, actor=None, reason: str = None, request=None, note: str = ''):
+        if note:
+            self.verification_note = note
+        return self.transition_to(
+            VerificationStatus.VERIFIED,
+            actor=actor,
+            reason=reason or 'Verification approved',
+            request=request,
+            update_fields=['verification_note'] if note else None
+        )
+
+    def reject(self, actor=None, reason: str = None, request=None, note: str = ''):
+        if note:
+            self.verification_note = note
+        return self.transition_to(
+            VerificationStatus.REJECTED,
+            actor=actor,
+            reason=reason or 'Verification rejected',
+            request=request,
+            update_fields=['verification_note'] if note else None
+        )
+
+    def suspend(self, actor=None, reason: str = None, request=None, note: str = ''):
+        if note:
+            self.verification_note = note
+        return self.transition_to(
+            VerificationStatus.SUSPENDED,
+            actor=actor,
+            reason=reason or 'Account suspended',
+            request=request,
+            update_fields=['verification_note'] if note else None
+        )
+
 
 class DoctorProfile(VerificationStateMachineMixin, models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='doctor_profile')

@@ -3,7 +3,7 @@
 from django.db import transaction
 from django.utils import timezone
 
-from .models import MedicineBatch, StockMovement
+from .models import BatchStatus, MedicineBatch, StockMovement
 
 
 class InsufficientStock(Exception):
@@ -23,6 +23,7 @@ def deduct_fefo(inventory_item, qty, ref_type, ref_id, user) -> list[MedicineBat
         batches = (MedicineBatch.objects
                    .select_for_update()
                    .filter(inventory_item=inventory_item,
+                           status=BatchStatus.ACTIVE,
                            expiry_date__gte=timezone.now().date(), qty__gt=0)
                    .order_by('expiry_date', 'id'))
         for batch in batches:
@@ -30,7 +31,10 @@ def deduct_fefo(inventory_item, qty, ref_type, ref_id, user) -> list[MedicineBat
                 break
             take = min(batch.qty, remaining)
             batch.qty -= take
-            batch.save(update_fields=['qty'])
+            if batch.qty == 0:
+                batch.deplete(actor=user, reason='Stock depleted by order fulfillment', update_fields=['qty'])
+            else:
+                batch.save(update_fields=['qty'])
             StockMovement.objects.create(
                 batch=batch, movement_type='out', quantity=-take,
                 reason='order fulfilment', ref_type=ref_type, ref_id=str(ref_id),
@@ -48,7 +52,10 @@ def restock(batches_with_qty, ref_type, ref_id, user):
     """Reverse a deduction (order/fulfilment cancelled)."""
     for batch, qty in batches_with_qty:
         batch.qty += qty
-        batch.save(update_fields=['qty'])
+        if batch.status == BatchStatus.DEPLETED and batch.qty > 0:
+            batch.reactivate(actor=user, reason='Stock restored from cancelled fulfillment')
+        else:
+            batch.save(update_fields=['qty'], bypass_transition_check=True)
         StockMovement.objects.create(
             batch=batch, movement_type='return', quantity=qty,
             reason='cancelled order', ref_type=ref_type, ref_id=str(ref_id),

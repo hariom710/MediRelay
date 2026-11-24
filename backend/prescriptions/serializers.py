@@ -100,6 +100,8 @@ class PharmacyRxSerializer(serializers.ModelSerializer):
 
 
 class ShareSerializer(serializers.ModelSerializer):
+    is_active = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = PrescriptionShare
-        fields = ['id', 'prescription', 'pharmacy', 'expires_at', 'revoked_at', 'created_at']
+        fields = ['id', 'prescription', 'pharmacy', 'status', 'is_active', 'expires_at', 'revoked_at', 'created_at']

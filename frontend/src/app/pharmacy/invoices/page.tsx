@@ -9,11 +9,14 @@ import Shell from "@/components/shell";
 
 interface Invoice {
   id: number;
-  order: number;
-  patient: string;
+  order?: number;
+  order_id?: number;
+  patient?: string;
+  patient_name?: string;
   total: string;
   payment_status: string;
-  created_at: string;
+  created_at?: string;
+  issued_at?: string;
 }
 
 export default function InvoicesPage() {
@@ -21,8 +24,7 @@ export default function InvoicesPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // Invoices are accessed via orders; this is a placeholder list
-    api<Invoice[]>("/invoices")
+    api<Invoice[]>("/pharmacy/invoices")
       .then(setRows)
       .catch(() => setError("Could not load invoices."));
   }, []);
@@ -65,7 +67,7 @@ export default function InvoicesPage() {
                     <div>
                       <p className="font-medium text-ink">Invoice #{inv.id}</p>
                       <p className="text-xs text-ink-secondary">
-                        Order #{inv.order} · {inv.patient} · ₹{inv.total} · {inv.created_at.slice(0, 16)}
+                        Order #{inv.order ?? inv.order_id} · {inv.patient ?? inv.patient_name ?? "Patient"} · ₹{inv.total} · {(inv.created_at || inv.issued_at || "").slice(0, 16)}
                       </p>
                     </div>
                     <Badge variant={inv.payment_status === "paid" ? "success" : inv.payment_status === "failed" ? "danger" : "neutral"}>

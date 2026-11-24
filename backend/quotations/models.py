@@ -48,6 +48,57 @@ class Quotation(StateMachineMixin, models.Model):
         from django.utils import timezone
         return self.valid_until < timezone.now()
 
+    def submit(self, actor=None, reason: str = None, request=None):
+        from django.utils import timezone
+        self.submitted_at = timezone.now()
+        return self.transition_to(
+            QuotationStatus.SUBMITTED,
+            actor=actor,
+            reason=reason or 'Quotation submitted by pharmacy',
+            request=request,
+            update_fields=['submitted_at']
+        )
+
+    def mark_viewed(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            QuotationStatus.VIEWED,
+            actor=actor,
+            reason=reason or 'Quotation viewed by patient',
+            request=request
+        )
+
+    def select(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            QuotationStatus.SELECTED,
+            actor=actor,
+            reason=reason or 'Quotation selected by patient for order',
+            request=request
+        )
+
+    def reject(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            QuotationStatus.REJECTED,
+            actor=actor,
+            reason=reason or 'Quotation rejected',
+            request=request
+        )
+
+    def expire(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            QuotationStatus.EXPIRED,
+            actor=actor,
+            reason=reason or 'Quotation validity expired',
+            request=request
+        )
+
+    def revert_to_draft(self, actor=None, reason: str = None, request=None):
+        return self.transition_to(
+            QuotationStatus.DRAFT,
+            actor=actor,
+            reason=reason or 'Quotation reverted to draft for revision',
+            request=request
+        )
+
 
 class QuotationItem(models.Model):
     """Availability + price per prescription line. Partial quotes are allowed."""
