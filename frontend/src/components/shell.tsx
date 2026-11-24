@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { api, type Me } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +43,44 @@ const ROLE_DISPLAY: Record<string, { label: string; variant: "default" | "succes
   admin: { label: "Admin", variant: "default" },
 };
 
+function NavList({
+  role,
+  activePath,
+  onNavigate,
+}: {
+  role: string;
+  activePath: string | null;
+  onNavigate: () => void;
+}) {
+  return (
+    <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      {(NAV[role] ?? []).map((item) => {
+        const isActive = activePath === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              "tap-interactive flex items-center justify-between rounded-[var(--r-md)] px-3.5 py-2 text-xs font-medium transition-all select-none",
+              isActive
+                ? "bg-[var(--accent)] text-white shadow-xs font-semibold"
+                : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text)]"
+            )}
+          >
+            <span>{item.label}</span>
+            {isActive && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function NavItems({ role, onNavigate }: { role: string; onNavigate: () => void }) {
+  return <NavList role={role} activePath={usePathname()} onNavigate={onNavigate} />;
+}
+
 export default function Shell({
   role,
   children,
@@ -51,15 +89,8 @@ export default function Shell({
   children: ReactNode;
 }) {
   const router = useRouter();
-  const [currentPath, setCurrentPath] = useState("");
   const [me, setMe] = useState<Me | null | undefined>(undefined);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setCurrentPath(window.location.pathname);
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +155,7 @@ export default function Shell({
   return (
     <div className="flex min-h-screen bg-[var(--bg-subtle)] font-sans antialiased text-[var(--text)]">
       {/* Mobile Header Bar */}
-      <div className="lg:hidden fixed top-0 inset-x-0 h-14 glass z-40 px-4 flex items-center justify-between">
+      <div className="lg:hidden fixed top-0 inset-x-0 h-14 bg-[var(--bg-elevated)] border-b border-[var(--border)] z-40 px-4 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-[var(--r-sm)] bg-[var(--accent)] text-white font-bold text-xs">
             M
@@ -155,7 +186,7 @@ export default function Shell({
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 bg-black/30 backdrop-blur-xs z-40 lg:hidden"
+          className="fixed inset-0 bg-black/20 z-40 lg:hidden"
         />
       )}
 
@@ -187,27 +218,9 @@ export default function Shell({
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {(NAV[role] ?? []).map((item) => {
-            const isActive = currentPath === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={cn(
-                  "tap-interactive flex items-center justify-between rounded-[var(--r-md)] px-3.5 py-2 text-xs font-medium transition-all select-none",
-                  isActive
-                    ? "bg-[var(--accent)] text-white shadow-xs font-semibold"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text)]"
-                )}
-              >
-                <span>{item.label}</span>
-                {isActive && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
-              </Link>
-            );
-          })}
-        </nav>
+        <Suspense fallback={<NavList role={role} activePath={null} onNavigate={() => setMobileMenuOpen(false)} />}>
+          <NavItems role={role} onNavigate={() => setMobileMenuOpen(false)} />
+        </Suspense>
 
         {/* Footer User & Role Switcher */}
         <div className="p-4 border-t border-[var(--border)] bg-[var(--bg-subtle)]/40 space-y-3">

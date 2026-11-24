@@ -21,6 +21,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<DoctorProfile | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function ProfilePage() {
     if (!profile) return;
     setBusy(true);
     setError("");
+    setSaved(false);
     try {
       await api("/doctor/profile", {
         method: "PUT",
@@ -41,7 +43,7 @@ export default function ProfilePage() {
           clinic_name: profile.clinic_name,
         },
       });
-      window.alert("Profile saved.");
+      setSaved(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not save profile.");
     } finally {
@@ -111,6 +113,11 @@ export default function ProfilePage() {
                   onChange={(e) => setProfile({ ...profile, clinic_name: e.target.value })}
                 />
                 <Button type="submit" loading={busy} disabled={busy}>Save</Button>
+                {saved && (
+                  <p role="status" className="text-xs font-medium text-success">
+                    Profile saved.
+                  </p>
+                )}
               </form>
               <p className="mt-3 text-xs text-ink-secondary">
                 Verification:{" "}

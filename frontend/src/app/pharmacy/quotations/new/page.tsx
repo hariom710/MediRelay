@@ -7,7 +7,6 @@ import { api, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import Shell from "@/components/shell";
 
 interface RxItem {
@@ -30,7 +29,6 @@ function QuotationForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rxId = searchParams.get("prescription_id");
-  const shareId = searchParams.get("share_id");
 
   const [rx, setRx] = useState<RxDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,11 +44,7 @@ function QuotationForm() {
   >({});
 
   useEffect(() => {
-    if (!rxId) {
-      setError("Missing prescription ID.");
-      setLoading(false);
-      return;
-    }
+    if (!rxId) return;
 
     api<RxDetail>(`/prescriptions/${rxId}`)
       .then((data) => {
@@ -140,7 +134,11 @@ function QuotationForm() {
         </Card>
       )}
 
-      {loading ? (
+      {!rxId ? (
+        <Card className="p-8 text-center text-xs text-[var(--text-tertiary)]">
+          Missing prescription ID.
+        </Card>
+      ) : loading ? (
         <Card className="p-8 text-center text-xs text-[var(--text-tertiary)]">
           Loading prescription items…
         </Card>

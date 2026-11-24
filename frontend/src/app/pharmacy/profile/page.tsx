@@ -178,8 +178,8 @@ export default function PharmacyProfile() {
                   <span className="mt-1 block text-xs text-ink-secondary">Note: {profile.verification_note}</span>
                 )}
               </p>
-              {profile.licence_number && (
-                <p className="mt-1 text-xs text-ink-secondary">Licence: {profile.licence_number}</p>
+              {(profile.license_number || profile.licence_number) && (
+                <p className="mt-1 text-xs text-ink-secondary">Licence: {profile.license_number || profile.licence_number}</p>
               )}
             </Card>
           </>

@@ -1,4 +1,4 @@
-from django.contrib.auth import login, logout
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
@@ -133,6 +133,8 @@ class ChangePasswordView(APIView):
                              'code': 'invalid_password'}, status=400)
         user.set_password(ser.validated_data['new_password'])
         user.save()
+        # Keep this session valid; Django invalidates all other sessions on password change.
+        update_session_auth_hash(request, user)
         record(request.user, 'user.change_password', 'user', user.id, {}, request)
         return Response({'detail': 'Password changed.'})
 
@@ -326,19 +328,21 @@ class PharmacyDashboardView(APIView):
         # Pending fulfillments
         from orders.models import OrderFulfillment, FulfillmentStatus
         pending_fulfillments = OrderFulfillment.objects.filter(
-            pharmacy=profile, status=FulfillmentStatus.PENDING).count()
+            pharmacy=profile,
+            status__in=[FulfillmentStatus.PENDING, FulfillmentStatus.IN_PROGRESS,
+                        FulfillmentStatus.READY_FOR_PICKUP]).count()
 
         # Low stock
         from inventory.models import InventoryItem
         low_stock = 0
-        for item in profile.inventory_items.all():
+        for item in profile.inventory_items.select_related('medicine').all():
             if item.available_qty < 10:
                 low_stock += 1
 
         # Expiring in 30 days
         expiring = 0
         for item in profile.inventory_items.prefetch_related('batches').all():
-            for b in item.batches.all():
+            for b in item.batches:  # use prefetched cache; .all() triggers a new query
                 if b.qty > 0 and b.status == 'active' and today <= b.expiry_date <= soon:
                     expiring += 1
 

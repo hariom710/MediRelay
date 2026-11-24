@@ -103,8 +103,12 @@ export default function InventoryPage() {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-border">
               {filtered.map((item) => (
-                <li key={item.id} className="px-6 py-4 tap-interactive hover:bg-accent/5 cursor-pointer" onClick={() => {}}>
-                  <div className="flex justify-between items-start">
+                <li key={item.id}>
+                  <Link
+                    href={`/pharmacy/inventory/${item.id}`}
+                    className="block px-6 py-4 tap-interactive hover:bg-accent/5"
+                  >
+                    <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium text-ink">{item.medicine_name}</p>
                       <p className="text-xs text-ink-secondary">
@@ -128,7 +132,8 @@ export default function InventoryPage() {
                         <Badge variant="danger">Expired present</Badge>
                       )}
                     </div>
-                  </div>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>

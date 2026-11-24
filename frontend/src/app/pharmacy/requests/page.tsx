@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,13 @@ interface Request {
   opened: boolean;
   expires_at: string;
   status?: string;
+}
+
+interface ShareLookup {
+  share_id?: number;
+  prescription_id?: number;
+  id?: number;
+  prescription?: { id?: number };
 }
 
 export default function RequestsPage() {
@@ -34,11 +42,13 @@ export default function RequestsPage() {
     setBusy(true);
     setVerifyError("");
     try {
-      const result = await api<any>(`/shares/${token.trim()}`);
+      const result = await api<ShareLookup>(`/shares/${token.trim()}`);
       if (result) {
         const rxId = result.prescription_id || result.prescription?.id || result.id;
+        if (!rxId) throw new Error("That link does not point to a prescription.");
         const shId = result.share_id || result.id || 0;
-        setRows((prev) => prev ? [...prev, { share_id: shId, prescription_id: rxId, opened: true, expires_at: "" }] : [{ share_id: shId, prescription_id: rxId, opened: true, expires_at: "" }]);
+        const row: Request = { share_id: shId, prescription_id: rxId, opened: true, expires_at: "" };
+        setRows((prev) => (prev ? [...prev, row] : [row]));
         setToken("");
       }
     } catch (err: unknown) {
@@ -97,18 +107,23 @@ export default function RequestsPage() {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-border">
               {rows.map((r) => (
-                <li key={r.share_id} className="px-6 py-4 tap-interactive hover:bg-accent/5 cursor-pointer" onClick={() => {}}>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-ink">RX-{r.prescription_id}</p>
-                      <p className="text-xs text-ink-secondary">
-                        Share #{r.share_id} · {r.expires_at ? `Expires ${r.expires_at.slice(0, 10)}` : "No expiry"}
-                      </p>
+                <li key={r.share_id}>
+                  <Link
+                    href={`/pharmacy/requests/${r.prescription_id}`}
+                    className="block px-6 py-4 tap-interactive hover:bg-accent/5"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium text-ink">RX-{r.prescription_id}</p>
+                        <p className="text-xs text-ink-secondary">
+                          Share #{r.share_id} · {r.expires_at ? `Expires ${r.expires_at.slice(0, 10)}` : "No expiry"}
+                        </p>
+                      </div>
+                      <Badge variant={r.opened ? "success" : "neutral"}>
+                        {r.opened ? "Opened" : "New"}
+                      </Badge>
                     </div>
-                    <Badge variant={r.opened ? "success" : "neutral"}>
-                      {r.opened ? "Opened" : "New"}
-                    </Badge>
-                  </div>
+                  </Link>
                 </li>
               ))}
             </ul>

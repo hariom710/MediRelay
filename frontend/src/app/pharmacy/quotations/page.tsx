@@ -14,7 +14,7 @@ interface Quotation {
   prescription: number;
   status: string;
   total: string;
-  validity: string;
+  valid_until: string;
   revision: number;
   created_at: string;
 }
@@ -74,7 +74,7 @@ export default function QuotationsPage() {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-border">
               {rows.map((q) => (
-                <li key={q.id} className="px-6 py-4 tap-interactive hover:bg-accent/5 cursor-pointer" onClick={() => {}}>
+                <li key={q.id} className="px-6 py-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium text-ink">Quotation #{q.id}</p>

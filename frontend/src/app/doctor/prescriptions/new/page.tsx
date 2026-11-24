@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { type Patient, type Prescription } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Shell from "@/components/shell";
@@ -229,7 +228,7 @@ export default function PrescriptionStudio() {
       const url = isNewDraft ? "/prescriptions" : `/prescriptions/${draftId}`;
       const rx = await api<Prescription>(url, { method, body: payload });
       // then finalize
-      const final = await api<Prescription>(`/prescriptions/${rx.id}/finalize`, {
+      await api<Prescription>(`/prescriptions/${rx.id}/finalize`, {
         method: "POST",
         body: { items: rx.items.map((it: RxItem) => ({ item_id: it.id, confirmed_qty: it.total_qty })) },
       });
@@ -266,6 +265,14 @@ export default function PrescriptionStudio() {
         {error && (
           <Card className="mb-6">
             <p className="p-4 text-sm text-danger">{error}</p>
+          </Card>
+        )}
+
+        {allergyAlert && (
+          <Card className="mb-6">
+            <p className="p-4 text-sm text-danger">
+              Allergy warning: a prescribed medicine matches this patient&apos;s recorded allergies.
+            </p>
           </Card>
         )}
 
@@ -493,11 +500,5 @@ export default function PrescriptionStudio() {
       </div>
     </Shell>
   );
-}
-
-
-
-function cn(...classes: (string | undefined | false)[]) {
-  return classes.filter(Boolean).join(" ");
 }
 

@@ -6,7 +6,6 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import Shell from "@/components/shell";
 
@@ -66,7 +65,7 @@ export default function PharmacyDashboard() {
             role="alert"
             className="flex items-center justify-between rounded-[var(--r-md)] bg-[var(--danger-subtle)] p-4 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20"
           >
-            <span>⚠ {error}</span>
+            <span>! {error}</span>
             <Button size="sm" variant="ghost" onClick={() => window.location.reload()}>
               Retry
             </Button>

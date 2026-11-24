@@ -35,9 +35,13 @@ def _can_view(user, rx) -> bool:
         return True
     if user.active_role == Role.PHARMACY and hasattr(user, 'pharmacy_profile'):
         profile = user.pharmacy_profile
+        if profile.verification_status != VerificationStatus.VERIFIED:
+            return False
         has_share = PrescriptionShare.objects.filter(
             prescription=rx,
-            status=ShareStatus.ACTIVE
+            status=ShareStatus.ACTIVE,
+            revoked_at__isnull=True,
+            expires_at__gt=timezone.now(),
         ).filter(models.Q(pharmacy=profile) | models.Q(pharmacy__isnull=True)).exists()
         if has_share:
             return True
@@ -54,11 +58,11 @@ class PrescriptionListCreateView(APIView):
             return Response({'detail': 'Authentication credentials were not provided.', 'code': 'not_authenticated'}, status=401)
         st = request.query_params.get('status')
         if user.active_role == Role.PATIENT and hasattr(user, 'patient_profile'):
-            qs = user.patient_profile.prescriptions.all()
+            qs = user.patient_profile.prescriptions.select_related('patient', 'doctor')
         elif user.active_role == Role.DOCTOR and hasattr(user, 'doctor_profile'):
-            qs = user.doctor_profile.prescriptions.all()
+            qs = user.doctor_profile.prescriptions.select_related('patient', 'doctor')
         elif user.is_staff or user.active_role == Role.ADMIN:
-            qs = Prescription.objects.all()
+            qs = Prescription.objects.select_related('patient', 'doctor')
         else:
             return Response({'detail': 'Role not permitted to list prescriptions.', 'code': 'permission_denied'}, status=403)
         if st:
@@ -129,10 +133,10 @@ class PrescriptionDetailView(APIView):
         if not _can_view(request.user, rx):
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
-        if request.user.active_role == Role.DOCTOR:
-            ser = PrescriptionSerializer(rx)
+        if request.user.active_role == Role.PHARMACY:
+            ser = PharmacyRxSerializer(rx)  # redacted: no notes, contact details or history
         else:
-            ser = PrescriptionSerializer(rx)  # patient sees full view of own rx
+            ser = PrescriptionSerializer(rx)
         return Response(ser.data)
 
     def patch(self, request, pk):
@@ -198,8 +202,15 @@ class PrescriptionFinalizeView(APIView):
                                  'code': 'empty_prescription'}, status=400)
 
             # doctor must confirm each calculated quantity
+            from decimal import Decimal, InvalidOperation
             confirmed = request.data.get('items') or []
-            confirmed_map = {c.get('item_id'): c.get('confirmed_qty') for c in confirmed}
+            confirmed_map = {}
+            for c in confirmed:
+                raw_id = c.get('item_id')
+                try:
+                    confirmed_map[int(raw_id)] = c.get('confirmed_qty')
+                except (TypeError, ValueError):
+                    continue
             for item in rx.items.all():
                 calc = computed_total(item)
                 given = confirmed_map.get(item.id)
@@ -207,8 +218,11 @@ class PrescriptionFinalizeView(APIView):
                     return Response(
                         {'detail': f'Quantity for item {item.id} must be confirmed before signing.',
                          'code': 'quantity_unconfirmed'}, status=400)
-                if str(calc) != str(given).rstrip('0').rstrip('.') \
-                        and str(calc) != str(given):
+                try:
+                    given_qty = Decimal(str(given))
+                except (InvalidOperation, TypeError, ValueError):
+                    given_qty = None
+                if given_qty != calc:
                     return Response(
                         {'detail': f'Confirmed quantity for item {item.id} ({given}) does not '
                                   f'match calculated ({calc}).',
@@ -292,10 +306,13 @@ class PrescriptionPDFView(APIView):
     def get(self, request, pk):
         from .pdf import prescription_pdf
         try:
-            rx = Prescription.objects.get(pk=pk)
+            rx = Prescription.objects.select_related().prefetch_related('items__medicine').get(pk=pk)
         except Prescription.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         if not _can_view(request.user, rx):
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if request.user.active_role == Role.PHARMACY:
+            # Pharmacy gets the redacted JSON view, not notes/patient identity in a PDF.
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
 
         if rx.is_expired:
@@ -317,9 +334,14 @@ class ShareListCreateView(APIView):
         rx = self._get_owned(request, pk)
         if rx is None:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        if not (request.user.is_staff or request.user.active_role in
+                (Role.ADMIN, Role.DOCTOR, Role.PATIENT)):
+            return Response({'detail': 'Not permitted to create share links.',
+                             'code': 'permission_denied'}, status=403)
         from accounts.models import PharmacyProfile, VerificationStatus
         doctor_profile = getattr(request.user, 'doctor_profile', None)
-        if (doctor_profile is None or
+        if request.user.active_role == Role.DOCTOR and (
+                doctor_profile is None or
                 doctor_profile.verification_status != VerificationStatus.VERIFIED):
             return Response(
                 {'detail': 'Your account is not verified. Sharing prescriptions is blocked.',
@@ -379,7 +401,14 @@ class ShareRevokeView(APIView):
             share = PrescriptionShare.objects.get(pk=share_id, prescription_id=pk)
         except PrescriptionShare.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
-        if not _can_view(request.user, share.prescription):
+        rx = share.prescription
+        user = request.user
+        allowed = (user.is_staff or user.active_role == Role.ADMIN
+                   or (user.active_role == Role.DOCTOR
+                       and rx.doctor_id == getattr(getattr(user, 'doctor_profile', None), 'id', None))
+                   or (user.active_role == Role.PATIENT
+                       and rx.patient_id == getattr(getattr(user, 'patient_profile', None), 'id', None)))
+        if not allowed:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         if share.status == ShareStatus.ACTIVE and share.revoked_at is None:
             share.revoke(actor=request.user, request=request, reason='Share link revoked by user')
@@ -397,6 +426,14 @@ class PrescriptionAccessLogListView(APIView):
         except Prescription.DoesNotExist:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         if not _can_view(request.user, rx):
+            return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+        user = request.user
+        allowed = (user.is_staff or user.active_role == Role.ADMIN
+                   or (user.active_role == Role.DOCTOR
+                       and rx.doctor_id == getattr(getattr(user, 'doctor_profile', None), 'id', None))
+                   or (user.active_role == Role.PATIENT
+                       and rx.patient_id == getattr(getattr(user, 'patient_profile', None), 'id', None)))
+        if not allowed:
             return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
         logs = (PrescriptionAccessLog.objects
                 .filter(share__prescription=rx)
@@ -442,7 +479,14 @@ class ShareTokenView(APIView):
             return Response({'detail': 'This prescription has expired.', 'code': 'prescription_expired'}, status=410)
 
         user = request.user
-        is_owner = share.prescription and _can_view(user, share.prescription)
+        # Only patients/doctors/admin can be owners here; a pharmacy must pass
+        # the verified + targeted-share checks below even on an open link.
+        is_owner = share.prescription and (
+            user.is_staff
+            or user.active_role == Role.ADMIN
+            or user.active_role == Role.DOCTOR
+            or user.active_role == Role.PATIENT
+        ) and _can_view(user, share.prescription)
         if not is_owner:
             if user.active_role != Role.PHARMACY:
                 return Response({'detail': 'Invalid link.', 'code': 'invalid_token'}, status=404)

@@ -87,7 +87,7 @@ export default function RegisterPage() {
               aria-live="polite"
               className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] px-4 py-3 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20 flex items-center gap-2"
             >
-              <span>⚠</span>
+              <span>!</span>
               <span>{error}</span>
             </div>
           )}

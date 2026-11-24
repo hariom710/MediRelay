@@ -134,9 +134,19 @@ class PatientDetailView(APIView):
             user.save()
         profile_dirty = False
         for f in ('date_of_birth', 'gender', 'blood_group', 'allergies'):
-            if f in data:
-                setattr(p, f, data[f] or '')
-                profile_dirty = True
+            if f not in data:
+                continue
+            value = data[f] or ''
+            if f == 'date_of_birth' and value:
+                from datetime import date
+                try:
+                    value = date.fromisoformat(str(value))
+                except (ValueError, TypeError):
+                    return Response(
+                        {'detail': 'date_of_birth must be in YYYY-MM-DD format.',
+                         'code': 'validation_error'}, status=400)
+            setattr(p, f, value)
+            profile_dirty = True
         if profile_dirty:
             p.save(update_fields=[f for f in ('date_of_birth', 'gender', 'blood_group',
                                               'allergies') if f in data])

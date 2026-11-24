@@ -6,7 +6,7 @@ import { useState } from "react";
 import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 const PORTAL_PATH: Record<string, string> = {
   doctor: "/doctor",
@@ -68,7 +68,7 @@ export default function LoginPage() {
               aria-live="polite"
               className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] px-4 py-3 text-xs font-medium text-[var(--danger)] border border-[var(--danger)]/20 flex items-center gap-2"
             >
-              <span>⚠</span>
+              <span>!</span>
               <span>{error}</span>
             </div>
           )}

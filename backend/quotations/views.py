@@ -9,7 +9,8 @@ from rest_framework.views import APIView
 from accounts.permissions import IsPatient, IsVerifiedPharmacy
 from audit.services import record
 from notifications.services import notify
-from prescriptions.models import Prescription, PrescriptionStatus, PrescriptionShare
+from prescriptions.models import (Prescription, PrescriptionShare, PrescriptionStatus,
+                                  ShareStatus)
 
 from .engine import compare
 from .models import Quotation, QuotationItem, QuotationStatus
@@ -39,9 +40,9 @@ class PharmacyRequestsView(APIView):
         profile = request.user.pharmacy_profile
         now = timezone.now()
         shares = (PrescriptionShare.objects
-                  .filter(revoked_at__isnull=True, expires_at__gt=now)
+                  .filter(status=ShareStatus.ACTIVE, revoked_at__isnull=True, expires_at__gt=now)
                   .filter(pharmacy=profile) | PrescriptionShare.objects
-                  .filter(revoked_at__isnull=True, expires_at__gt=now,
+                  .filter(status=ShareStatus.ACTIVE, revoked_at__isnull=True, expires_at__gt=now,
                           pharmacy__isnull=True))
         shares = shares.distinct().select_related('prescription', 'prescription__patient__user')
         rows = []
@@ -87,8 +88,12 @@ class QuotationListCreateView(APIView):
             profile = request.user.pharmacy_profile
             # Look for active share targeted to this pharmacy or open
             share = PrescriptionShare.objects.select_related('prescription').filter(
-                prescription_id=prescription_id
-            ).filter(models.Q(pharmacy=profile) | models.Q(pharmacy__isnull=True)).first()
+                prescription_id=prescription_id,
+                status=ShareStatus.ACTIVE,
+                revoked_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            ).filter(models.Q(pharmacy=profile) | models.Q(pharmacy__isnull=True)) \
+                .order_by('-created_at').first()
             if not share:
                 # Check if prescription itself exists
                 rx_exists = Prescription.objects.filter(pk=prescription_id).first()
@@ -119,6 +124,10 @@ class QuotationListCreateView(APIView):
         if not isinstance(items_data, list) or not items_data:
             return Response({'detail': 'items list is required.', 'code': 'validation_error'},
                             status=400)
+        if request.data.get('submit') and not any(
+                isinstance(row, dict) and row.get('available', True) for row in items_data):
+            return Response({'detail': 'Add at least one available medicine.',
+                             'code': 'empty_quotation'}, status=400)
 
         try:
             pickup_fee = _parse_pickup_fee(request.data.get('pickup_fee'))
@@ -146,6 +155,15 @@ class QuotationListCreateView(APIView):
 
         record(request.user, 'quotation.create', 'quotation', quote.id,
                {'prescription_id': rx.id}, request)
+        if request.data.get('submit'):
+            quote.submitted_at = timezone.now()
+            quote.transition_to(
+                QuotationStatus.SUBMITTED, actor=request.user, request=request,
+                reason='Pharmacy submitted quotation', save=True,
+                update_fields=['submitted_at'])
+            notify(quote.prescription.patient.user, 'quotation_submitted',
+                   'New price quotation',
+                   f'{quote.pharmacy.pharmacy_name} submitted a quotation.')
         return Response(QuotationSerializer(quote).data, status=201)
 
 
@@ -285,7 +303,8 @@ class QuotationReviseView(APIView):
 
         items_data = request.data.get('items')
         with transaction.atomic():
-            quote.transition_to(QuotationStatus.DRAFT, actor=request.user, request=request, reason='Revision initiated', save=True)
+            if quote.status != QuotationStatus.DRAFT:
+                quote.transition_to(QuotationStatus.DRAFT, actor=request.user, request=request, reason='Revision initiated', save=True)
             quote.revision += 1
             if items_data:
                 quote.items.all().delete()
@@ -313,7 +332,7 @@ class QuotationReviseView(APIView):
 
             if request.data.get('submit', True):
                 quote.submitted_at = timezone.now()
-                quote.transition_to(QuotationStatus.SUBMITTED, actor=request.user, request=request, reason=f'Submitted revision {quote.revision}', save=True)
+                quote.transition_to(QuotationStatus.SUBMITTED, actor=request.user, request=request, reason=f'Submitted revision {quote.revision}', save=True, update_fields=['submitted_at'])
 
         record(request.user, 'quotation.revise', 'quotation', quote.id, {'revision': quote.revision}, request)
         return Response(QuotationSerializer(quote).data)

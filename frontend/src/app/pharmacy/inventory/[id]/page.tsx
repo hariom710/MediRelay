@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState, use, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Shell from "@/components/shell";
-import { type InventoryItem, type Batch } from "@/lib/types";
+import { type InventoryItem } from "@/lib/types";
 
 function InventoryDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
   const [item, setItem] = useState<InventoryItem | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -103,7 +105,7 @@ function InventoryDetailInner({ params }: { params: Promise<{ id: string }> }) {
     setError("");
     try {
       await api(`/pharmacy/inventory/${id}`, { method: "DELETE" });
-      window.location.href = "/pharmacy/inventory";
+      router.push("/pharmacy/inventory");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not delete item.");
     } finally {
@@ -158,6 +160,20 @@ function InventoryDetailInner({ params }: { params: Promise<{ id: string }> }) {
           </div>
           <div className="mt-4 flex justify-end">
             <Button onClick={handleAddBatch} loading={busy} disabled={busy}>Save batch</Button>
+          </div>
+        </Card>
+      )}
+
+      {adjustBatch !== null && (
+        <Card className="mb-6 p-6">
+          <h2 className="text-base font-semibold mb-4">Adjust batch stock</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Change in units (+/-)" type="number" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} required />
+            <Input label="Reason" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} required />
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setAdjustBatch(null)}>Cancel</Button>
+            <Button onClick={handleAdjust} loading={busy} disabled={busy}>Save adjustment</Button>
           </div>
         </Card>
       )}

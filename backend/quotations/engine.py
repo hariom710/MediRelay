@@ -39,6 +39,7 @@ def _eligible_items(rx_items, pharmacy_ids) -> dict:
     qs = (QuotationItem.objects
           .filter(quotation__status__in=ELIGIBLE_STATUSES,
                   quotation__valid_until__gte=now,
+                  quotation__pharmacy__verification_status='verified',
                   quotation__pharmacy_id__in=pharmacy_ids,
                   available=True,
                   prescription_item__in=rx_items)
@@ -74,7 +75,8 @@ def compare(prescription, mode: str) -> dict:
     quotation_map = {q.pharmacy_id: q for q in
                      prescription.quotations.filter(
                          status__in=ELIGIBLE_STATUSES,
-                         valid_until__gte=timezone.now())}
+                         valid_until__gte=timezone.now(),
+                         pharmacy__verification_status='verified')}
     pharmacy_ids = list(quotation_map.keys())
     if not pharmacy_ids:
         return {'mode': mode, 'options': []}

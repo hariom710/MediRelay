@@ -14,7 +14,7 @@ interface Order {
   id: number;
   status: string;
   total: string;
-  prescription: number;
+  prescription_id: number;
 }
 
 export default function PatientPortal() {
@@ -88,7 +88,7 @@ export default function PatientPortal() {
                       Order #{o.id}
                     </p>
                     <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                      Fulfilling Prescription RX-{o.prescription}
+                      Fulfilling Prescription RX-{o.prescription_id}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

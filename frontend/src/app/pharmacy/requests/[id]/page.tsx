@@ -38,7 +38,6 @@ function RequestDetailInner({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [rx, setRx] = useState<RxDetail | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!id) return;

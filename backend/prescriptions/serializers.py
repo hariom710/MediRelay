@@ -74,14 +74,28 @@ class PharmacyRxSerializer(serializers.ModelSerializer):
     no contact details, no documents."""
 
     items = PrescriptionItemSerializer(many=True, read_only=True)
+    doctor_name = serializers.SerializerMethodField()
     patient_display = serializers.SerializerMethodField()
     age = serializers.SerializerMethodField()
+    gender = serializers.SerializerMethodField()
     allergy_flag = serializers.SerializerMethodField()
+    allergies = serializers.SerializerMethodField()
 
     class Meta:
         model = Prescription
-        fields = ['id', 'consultation_date', 'status', 'version',
-                  'patient_display', 'age', 'allergy_flag', 'items']
+        fields = ['id', 'consultation_date', 'valid_until', 'status', 'version',
+                  'doctor_name', 'patient_display', 'age', 'gender', 'allergy_flag',
+                  'allergies', 'items']
+
+    def get_doctor_name(self, obj):
+        u = obj.doctor.user
+        return u.get_full_name() or u.email
+
+    def get_gender(self, obj):
+        return obj.patient.gender
+
+    def get_allergies(self, obj):
+        return obj.patient.allergies
 
     def get_patient_display(self, obj):
         u = obj.patient.user

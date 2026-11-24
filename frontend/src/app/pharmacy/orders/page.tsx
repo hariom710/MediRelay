@@ -9,22 +9,44 @@ import Shell from "@/components/shell";
 
 interface Order {
   id: number;
+  fulfillment_id: number;
   status: string;
   patient_name: string;
   item_count: number;
   subtotal: string;
+  pickup_fee: string;
   created_at: string;
 }
 
 export default function OrdersPage() {
   const [rows, setRows] = useState<Order[] | null>(null);
   const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState<number | null>(null);
 
-  useEffect(() => {
+  function load() {
     api<Order[]>("/pharmacy/orders")
       .then(setRows)
       .catch((e) => setError(e.message));
+  }
+
+  useEffect(() => {
+    load();
   }, []);
+
+  async function act(order: Order, action: "fulfill" | "cancel") {
+    setBusyId(order.fulfillment_id);
+    setError("");
+    try {
+      await api(`/orders/${order.id}/fulfillments/${order.fulfillment_id}/${action}`, {
+        method: "POST",
+      });
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Action failed.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <Shell role="pharmacy">
@@ -59,18 +81,39 @@ export default function OrdersPage() {
           <Card className="overflow-hidden">
             <ul className="divide-y divide-border">
               {rows.map((o) => (
-                <li key={o.id} className="px-6 py-4 tap-interactive hover:bg-accent/5 cursor-pointer" onClick={() => {}}>
-                  <div className="flex justify-between items-start">
+                <li key={o.fulfillment_id} className="px-6 py-4">
+                  <div className="flex justify-between items-start gap-4">
                     <div>
                       <p className="font-medium text-ink">Order #{o.id}</p>
                       <p className="text-xs text-ink-secondary">
-                        {o.patient_name} · {o.item_count} items · ₹{o.subtotal} · {o.created_at.slice(0, 16)}
+                        {o.patient_name} · {o.item_count} items · ₹{o.subtotal}
+                        {Number(o.pickup_fee) > 0 ? ` + ₹${o.pickup_fee} pickup` : ""} · {o.created_at.slice(0, 16)}
                       </p>
                     </div>
                     <Badge variant={o.status === "fulfilled" ? "success" : o.status === "cancelled" ? "danger" : "finalized"}>
                       {o.status.charAt(0).toUpperCase() + o.status.slice(1)}
                     </Badge>
                   </div>
+                  {(o.status === "pending" || o.status === "in_progress" || o.status === "ready_for_pickup") && (
+                    <div className="mt-3 flex gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        loading={busyId === o.fulfillment_id}
+                        disabled={busyId !== null}
+                        onClick={() => act(o, "fulfill")}
+                      >
+                        Fulfill & invoice
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        disabled={busyId !== null}
+                        onClick={() => act(o, "cancel")}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

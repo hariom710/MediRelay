@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, type Me } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
 const PORTAL_PATH: Record<string, string> = {
@@ -27,7 +27,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] selection:bg-[var(--accent-subtle)] selection:text-[var(--accent)] flex flex-col font-sans">
       {/* 1. Functional Sticky Glass Navigation */}
-      <header className="sticky top-0 z-50 w-full glass transition-all">
+      <header className="sticky top-0 z-50 w-full bg-[var(--bg-elevated)] border-b border-[var(--border)] transition-all">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 items-center justify-center rounded-[var(--r-md)] bg-[var(--accent)] text-white font-bold text-sm shadow-xs">
@@ -72,7 +72,7 @@ export default function HomePage() {
           {/* Eyebrow Status Badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] px-3.5 py-1 text-xs font-medium text-[var(--text-secondary)] shadow-2xs mb-8">
             <span className="h-2 w-2 rounded-full bg-[var(--success)] animate-pulse" />
-            <span>CDSCO & DPDP Act 2023 Compliant Infrastructure</span>
+            <span>Role-scoped access · Audit-logged actions</span>
           </div>
 
           <h1 className="type-display text-[var(--text)] tracking-tight">
@@ -97,7 +97,7 @@ export default function HomePage() {
           {/* Test verification metrics */}
           <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-xs text-[var(--text-tertiary)] border-t border-[var(--border)] pt-8">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-[var(--text)] font-mono">156/156</span> passing test gates
+              <span className="font-semibold text-[var(--text)] font-mono">165/165</span> passing test gates
             </div>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[var(--text)]">FEFO</span> atomic inventory locking
@@ -288,13 +288,13 @@ export default function HomePage() {
                 </CardDescription>
                 <ul className="mt-5 space-y-2 text-xs text-[var(--text-secondary)]">
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--accent)]">✓</span> State Medical Council Reg. Verification
+                    <span className="text-[var(--accent)]">·</span> State Medical Council Reg. Verification
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--accent)]">✓</span> Tamper-evident digital signatures
+                    <span className="text-[var(--accent)]">·</span> Tamper-evident digital signatures
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--accent)]">✓</span> Instant server-side PDF generation
+                    <span className="text-[var(--accent)]">·</span> Instant server-side PDF generation
                   </li>
                 </ul>
               </div>
@@ -320,13 +320,13 @@ export default function HomePage() {
                 </CardDescription>
                 <ul className="mt-5 space-y-2 text-xs text-[var(--text-secondary)]">
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--success)]">✓</span> Scoped tokens: private notes redacted
+                    <span className="text-[var(--success)]">·</span> Scoped tokens: private notes redacted
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--success)]">✓</span> Instant token revocation at any time
+                    <span className="text-[var(--success)]">·</span> Instant token revocation at any time
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--success)]">✓</span> Dual comparison: Single vs Multi-store
+                    <span className="text-[var(--success)]">·</span> Dual comparison: Single vs Multi-store
                   </li>
                 </ul>
               </div>
@@ -352,13 +352,13 @@ export default function HomePage() {
                 </CardDescription>
                 <ul className="mt-5 space-y-2 text-xs text-[var(--text-secondary)]">
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--warning)]">✓</span> Section 65 strict anti-substitution guards
+                    <span className="text-[var(--warning)]">·</span> Section 65 strict anti-substitution guards
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--warning)]">✓</span> Earliest-expiry batch inventory deduction
+                    <span className="text-[var(--warning)]">·</span> Earliest-expiry batch inventory deduction
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--warning)]">✓</span> Itemized tax receipts & invoice PDF
+                    <span className="text-[var(--warning)]">·</span> Itemized tax receipts & invoice PDF
                   </li>
                 </ul>
               </div>
@@ -384,13 +384,13 @@ export default function HomePage() {
                 </CardDescription>
                 <ul className="mt-5 space-y-2 text-xs text-[var(--text-secondary)]">
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--text)]">✓</span> Medical Council credential verification
+                    <span className="text-[var(--text)]">·</span> Medical Council credential verification
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--text)]">✓</span> Drug license 20B/21B validation queue
+                    <span className="text-[var(--text)]">·</span> Drug license 20B/21B validation queue
                   </li>
                   <li className="flex items-center gap-2">
-                    <span className="text-[var(--text)]">✓</span> Append-only immutable audit ledger
+                    <span className="text-[var(--text)]">·</span> Append-only immutable audit ledger
                   </li>
                 </ul>
               </div>

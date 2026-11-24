@@ -363,26 +363,66 @@ class TestUnverifiedRoles:
                         content_type='application/json')
         assert r.status_code == 403
 
-    def test_unverified_doctor_cannot_finalize_prescription(
+    def test_unverified_doctor_can_create_draft_prescription(
         self, client, make_user, medicine
     ):
+        """Unverified doctors may create draft prescriptions."""
         docUnv = make_user('unvdoc@x.com', 'doctor', registration_number='UV1',
                            verification_status='pending')
         pat = make_user('p11@pat.com', 'patient')
-
-        # Doctors can create prescriptions regardless of verification status
-        # But finalizing should be blocked if we add verification checks.
-        # For now we test that prescription creation works but
-        # document that doctor verification is not currently enforced at API level.
-        # This is a known gap: IsDoctor does not check verification_status.
         _login(client, docUnv, 'doctor')
         r = client.post('/api/v1/prescriptions', {
             'patient_id': pat.patient_profile.id,
             'consultation_date': '2026-11-20',
             'items': [{'medicine': medicine.id, 'morning': 1, 'duration_days': 5}],
         }, content_type='application/json')
-        # Document current behavior (not necessarily enforced — gap noted)
-        assert r.status_code in (201, 403)
+        assert r.status_code == 201, f"Expected 201 for unverified doctor create, got {r.status_code}"
+
+    def test_unverified_doctor_cannot_finalize_prescription(
+        self, client, make_user, medicine
+    ):
+        """Unverified doctors must not finalize prescriptions."""
+        docUnv = make_user('unvdoc@x.com', 'doctor', registration_number='UV1',
+                           verification_status='pending')
+        pat = make_user('p11@pat.com', 'patient')
+        _login(client, docUnv, 'doctor')
+        rx = __import__('prescriptions.models', fromlist=['Prescription']).Prescription.objects.create(
+            doctor=docUnv.doctor_profile,
+            patient=pat.patient_profile,
+            consultation_date='2026-11-20',
+            status='draft',
+        )
+        __import__('prescriptions.models', fromlist=['PrescriptionItem']).PrescriptionItem.objects.create(
+            prescription=rx, medicine=medicine,
+            morning=1, afternoon=0, night=0, duration_days=5, total_qty=5,
+        )
+        r = client.post(f'/api/v1/prescriptions/{rx.id}/finalize',
+                        {'items': [{'item_id': rx.items.first().id, 'confirmed_qty': 5}]},
+                        content_type='application/json')
+        assert r.status_code == 403, f"Expected 403 for unverified doctor finalize, got {r.status_code}"
+
+    def test_unverified_doctor_cannot_share_prescription(
+        self, client, make_user, medicine
+    ):
+        """Unverified doctors must not share prescriptions."""
+        docUnv = make_user('unvdoc@x.com', 'doctor', registration_number='UV1',
+                           verification_status='pending')
+        pat = make_user('p11@pat.com', 'patient')
+        _login(client, docUnv, 'doctor')
+        rx = __import__('prescriptions.models', fromlist=['Prescription']).Prescription.objects.create(
+            doctor=docUnv.doctor_profile,
+            patient=pat.patient_profile,
+            consultation_date='2026-11-20',
+            status='finalized',
+        )
+        __import__('prescriptions.models', fromlist=['PrescriptionItem']).PrescriptionItem.objects.create(
+            prescription=rx, medicine=medicine,
+            morning=1, afternoon=0, night=0, duration_days=5, total_qty=5,
+        )
+        r = client.post(f'/api/v1/prescriptions/{rx.id}/shares',
+                        {'pharmacy_id': 999}, content_type='application/json')
+        # Verified doctors can share; unverified get 403
+        assert r.status_code == 403, f"Expected 403 for unverified doctor share, got {r.status_code}"
 
 
 # ---------------------------------------------------------------------------
