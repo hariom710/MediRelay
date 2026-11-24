@@ -8,6 +8,19 @@ def build_prescription(doctor, patient, items):
     required_qty is encoded as morning=qty, duration=1, qty_per_dose=1."""
     from prescriptions.models import Prescription, PrescriptionItem, PrescriptionStatus
     from prescriptions.services import computed_total
+    from accounts.models import CareAccess, AccessScope, AccessStatus, GrantedVia
+
+    CareAccess.objects.get_or_create(
+        doctor=doctor.doctor_profile,
+        patient=patient.patient_profile,
+        defaults={
+            'scope': AccessScope.FULL,
+            'status': AccessStatus.ACTIVE,
+            'granted_via': GrantedVia.LEGACY,
+            'granted_at': timezone.now(),
+            'expires_at': timezone.now() + timezone.timedelta(days=365),
+        }
+    )
 
     rx = Prescription.objects.create(
         patient=patient.patient_profile, doctor=doctor.doctor_profile,

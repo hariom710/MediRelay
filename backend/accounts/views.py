@@ -132,6 +132,7 @@ class ChangePasswordView(APIView):
             return Response({'detail': 'Current password is incorrect.',
                              'code': 'invalid_password'}, status=400)
         user.set_password(ser.validated_data['new_password'])
+        user.must_change_password = False
         user.save()
         # Keep this session valid; Django invalidates all other sessions on password change.
         update_session_auth_hash(request, user)

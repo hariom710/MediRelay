@@ -214,3 +214,29 @@ class PrescriptionShare(StateMachineMixin, models.Model):
             reason=reason or 'Share link validity expired',
             request=request
         )
+
+
+class Visit(models.Model):
+    """One consultation. Drives the cross-doctor timeline."""
+
+    patient = models.ForeignKey('accounts.PatientProfile', on_delete=models.CASCADE,
+                                related_name='visits')
+    doctor = models.ForeignKey('accounts.DoctorProfile', on_delete=models.PROTECT,
+                               related_name='visits')
+    prescription = models.ForeignKey(Prescription, null=True, blank=True,
+                                     on_delete=models.SET_NULL, related_name='visits')
+    complaint = models.CharField(max_length=200, blank=True)
+    diagnosis = models.CharField(max_length=200, blank=True)
+    private_notes = models.TextField(blank=True)  # author-only
+    visited_at = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-visited_at', '-id']
+        indexes = [
+            models.Index(fields=['patient', 'visited_at'], name='idx_visit_patient_date'),
+        ]
+
+    def __str__(self):
+        return f'Visit {self.pk} for {self.patient_id}'
+

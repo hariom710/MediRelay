@@ -40,10 +40,12 @@ class RegisterSerializer(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     roles = serializers.SerializerMethodField()
     verification_status = serializers.SerializerMethodField()
+    patient_code = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'phone', 'roles', 'active_role', 'verification_status']
+        fields = ['id', 'email', 'phone', 'roles', 'active_role', 'verification_status',
+                  'must_change_password', 'patient_code']
 
     def get_roles(self, obj):
         return obj.role_names
@@ -55,6 +57,11 @@ class UserSerializer(serializers.ModelSerializer):
         if role == Role.PHARMACY and hasattr(obj, 'pharmacy_profile'):
             return obj.pharmacy_profile.verification_status
         return 'verified' if role == Role.PATIENT else None
+
+    def get_patient_code(self, obj):
+        if hasattr(obj, 'patient_profile'):
+            return obj.patient_profile.patient_code
+        return None
 
 
 class ChangePasswordSerializer(serializers.Serializer):

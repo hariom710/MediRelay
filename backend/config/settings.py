@@ -77,6 +77,23 @@ DATABASES = {
     }
 }
 
+# Set DATABASE_URL (e.g. Neon) to run on PostgreSQL. Unset = local SQLite.
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    from urllib.parse import urlparse, parse_qs
+
+    _db = urlparse(DATABASE_URL)
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': _db.path.lstrip('/'),
+        'USER': _db.username,
+        'PASSWORD': _db.password,
+        'HOST': _db.hostname,
+        'PORT': _db.port or 5432,
+        'CONN_MAX_AGE': int(os.environ.get('DJANGO_CONN_MAX_AGE', 600)),
+        'OPTIONS': {'sslmode': parse_qs(_db.query).get('sslmode', ['require'])[0]},
+    }
+
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {

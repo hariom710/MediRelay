@@ -27,9 +27,14 @@ def _can_view(user, rx) -> bool:
         return False
     if user.is_staff or user.active_role == Role.ADMIN:
         return True
-    if user.active_role == Role.DOCTOR and hasattr(user, 'doctor_profile') \
-            and rx.doctor_id == user.doctor_profile.id:
-        return True
+    if user.active_role == Role.DOCTOR and hasattr(user, 'doctor_profile'):
+        if rx.doctor_id == user.doctor_profile.id:
+            return True
+        from accounts.registry import active_access
+        from accounts.models import AccessScope
+        if active_access(user, rx.patient, AccessScope.FULL):
+            return True
+        return False
     if user.active_role == Role.PATIENT and hasattr(user, 'patient_profile') \
             and rx.patient_id == user.patient_profile.id:
         return True
@@ -84,6 +89,12 @@ class PrescriptionListCreateView(APIView):
         except (PatientProfile.DoesNotExist, TypeError, ValueError):
             return Response({'detail': 'Patient not found.', 'code': 'patient_not_found'},
                             status=404)
+
+        from accounts.registry import active_access
+        if not active_access(user, patient):
+            return Response(
+                {'detail': 'Active patient care access required to create prescriptions.',
+                 'code': 'access_required'}, status=403)
 
         if not consult_date:
             return Response({'detail': 'consultation_date is required.',
@@ -194,6 +205,11 @@ class PrescriptionFinalizeView(APIView):
                 return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
             if rx.doctor_id != request.user.doctor_profile.id:
                 return Response({'detail': 'Not found.', 'code': 'not_found'}, status=404)
+            from accounts.registry import active_access
+            if not active_access(request.user, rx.patient):
+                return Response(
+                    {'detail': 'Active patient care access required to finalize prescription.',
+                     'code': 'access_required'}, status=403)
             if rx.status != PrescriptionStatus.DRAFT:
                 return Response({'detail': 'Only drafts can be finalized.',
                                  'code': 'not_draft'}, status=409)

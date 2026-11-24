@@ -165,15 +165,13 @@ class Invoice(StateMachineMixin, models.Model):
     }
 
     class Meta:
+        ordering = ['-issued_at']
         constraints = [
             models.CheckConstraint(
-                check=models.Q(payment_status__in=['pending', 'paid', 'failed', 'refunded']),
+                condition=models.Q(payment_status__in=['pending', 'paid', 'failed', 'refunded']),
                 name='valid_payment_status',
             ),
         ]
-
-    class Meta:
-        ordering = ['-issued_at']
 
     def mark_paid(self, actor=None, reason: str = None, request=None):
         return self.transition_to(

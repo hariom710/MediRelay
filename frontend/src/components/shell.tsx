@@ -10,14 +10,16 @@ import { Badge } from "@/components/ui/badge";
 const NAV: Record<string, { href: string; label: string }[]> = {
   doctor: [
     { href: "/doctor", label: "Dashboard" },
-    { href: "/doctor/patients", label: "Patients" },
+    { href: "/doctor/patients", label: "My Patients" },
+    { href: "/doctor/patients/find", label: "Find Patient" },
     { href: "/doctor/prescriptions/new", label: "New Prescription" },
     { href: "/doctor/prescriptions", label: "Prescription History" },
     { href: "/doctor/notifications", label: "Notifications" },
     { href: "/doctor/profile", label: "Doctor Profile" },
   ],
   patient: [
-    { href: "/patient", label: "My Orders & Receipts" },
+    { href: "/patient", label: "Health & Profile" },
+    { href: "/patient/doctors", label: "My Doctors & Access" },
     { href: "/patient/prescriptions", label: "Prescriptions & Quotes" },
   ],
   pharmacy: [
@@ -268,6 +270,118 @@ export default function Shell({
       <main className="flex-1 min-w-0 pt-16 lg:pt-0 p-6 sm:p-8 lg:p-12 overflow-x-hidden">
         <div className="max-w-6xl mx-auto">{children}</div>
       </main>
+
+      {/* Forced Password Change Modal */}
+      {me?.must_change_password && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-elevated)] p-6 shadow-xl space-y-4">
+            <div className="space-y-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-warning/10 text-warning border border-warning/20">
+                Action Required
+              </span>
+              <h2 className="text-lg font-bold text-[var(--text)]">Change Temporary Password</h2>
+              <p className="text-xs text-[var(--text-secondary)]">
+                You are currently logged in with a temporary password. For account security, you must set a permanent password before continuing.
+              </p>
+            </div>
+
+            <ChangePasswordForm onSuccess={() => setMe((prev) => (prev ? { ...prev, must_change_password: false } : null))} />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ChangePasswordForm({ onSuccess }: { onSuccess: () => void }) {
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await api("/auth/change-password", {
+        method: "POST",
+        body: { old_password: oldPassword, new_password: newPassword },
+      });
+      onSuccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to change password.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3.5">
+      {error && (
+        <div className="rounded-[var(--r-md)] bg-[var(--danger-subtle)] p-3 text-xs text-[var(--danger)] border border-[var(--danger)]/20">
+          {error}
+        </div>
+      )}
+
+      <div>
+        <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+          Temporary / Current Password
+        </label>
+        <input
+          type="password"
+          required
+          value={oldPassword}
+          onChange={(e) => setOldPassword(e.target.value)}
+          placeholder="Enter temporary password"
+          className="w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)] focus-visible-ring"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+          New Password (min 8 characters)
+        </label>
+        <input
+          type="password"
+          required
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="Enter new strong password"
+          className="w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)] focus-visible-ring"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-[var(--text)] mb-1">
+          Confirm New Password
+        </label>
+        <input
+          type="password"
+          required
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Re-enter new password"
+          className="w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-xs text-[var(--text)] focus-visible-ring"
+        />
+      </div>
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full tap-interactive flex items-center justify-center rounded-[var(--r-md)] bg-[var(--accent)] py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-[var(--accent)]/90 transition-all disabled:opacity-50"
+      >
+        {loading ? "Updating password…" : "Set Permanent Password"}
+      </button>
+    </form>
   );
 }

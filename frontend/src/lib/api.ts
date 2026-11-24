@@ -58,4 +58,6 @@ export interface Me {
   roles: string[];
   active_role: string;
   verification_status: string | null;
+  must_change_password?: boolean;
+  patient_code?: string | null;
 }
