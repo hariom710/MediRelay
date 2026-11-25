@@ -205,9 +205,13 @@ class VerificationQueueView(APIView):
     permission_classes = [IsAdminRole]
 
     def get(self, request):
-        st = request.query_params.get('status', 'pending')
-        doctors = DoctorProfile.objects.filter(verification_status=st)
-        pharmacies = PharmacyProfile.objects.filter(verification_status=st)
+        st = request.query_params.get('status', 'all')
+        if st and st != 'all':
+            doctors = DoctorProfile.objects.filter(verification_status=st).select_related('user').order_by('-id')
+            pharmacies = PharmacyProfile.objects.filter(verification_status=st).select_related('user').order_by('-id')
+        else:
+            doctors = DoctorProfile.objects.all().select_related('user').order_by('-id')
+            pharmacies = PharmacyProfile.objects.all().select_related('user').order_by('-id')
         return Response({
             'doctors': DoctorProfileSerializer(doctors, many=True).data,
             'pharmacies': PharmacyProfileSerializer(pharmacies, many=True).data,

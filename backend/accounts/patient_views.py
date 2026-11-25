@@ -77,8 +77,12 @@ class PatientSearchView(APIView):
             age = None
             if dob:
                 age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-            has_acc = active_access(request.user, p) is not None
+            grant = active_access(request.user, p)
+            has_acc = grant is not None
             full_name = p.user.get_full_name() or p.user.first_name or 'Patient'
+            req_exists = CareAccess.objects.filter(
+                doctor=doc, patient=p, status=AccessStatus.PENDING
+            ).exists()
             results.append({
                 'id': p.id,
                 'patient_code': p.patient_code,
@@ -86,7 +90,11 @@ class PatientSearchView(APIView):
                 'age': age,
                 'gender': p.gender,
                 'masked_phone': mask_phone(p.phone_normalized),
+                'phone_masked': mask_phone(p.phone_normalized),
                 'has_access': has_acc,
+                'has_active_access': has_acc,
+                'access_scope': grant.scope if grant else None,
+                'access_status': 'granted' if has_acc else ('requested' if req_exists else 'none'),
                 'is_claimed': p.is_claimed,
             })
         return Response(results)
@@ -329,6 +337,7 @@ class PatientSummaryView(APIView):
             'blood_group': p.blood_group,
             'allergies': p.allergies,
             'chronic_conditions': p.chronic_conditions,
+            'active_medications': meds,
             'current_medicines': meds,
             'scope': grant.scope,
         })
@@ -603,9 +612,14 @@ class CareAccessCodeView(APIView):
 
     def post(self, request):
         p = request.user.patient_profile
+        scope = request.data.get('scope', AccessScope.FULL)
+        if scope not in (AccessScope.BASIC, AccessScope.FULL):
+            scope = AccessScope.FULL
         code = new_access_code(p)
         return Response({
             'code': code,
+            'scope': scope,
+            'duration_minutes': ACCESS_CODE_TTL_MINUTES,
             'expires_in_minutes': ACCESS_CODE_TTL_MINUTES,
         })
 
@@ -631,11 +645,15 @@ class CareAccessCodeRedeemView(APIView):
         elif patient_id:
             p = PatientProfile.objects.filter(pk=patient_id).first()
 
-        if p is None:
-            return Response({'detail': 'Patient not found.', 'code': 'patient_not_found'}, status=404)
-
-        if not redeem_access_code(p, code):
+        match = redeem_access_code(p, code)
+        if not match:
             return Response({'detail': 'Invalid, expired, or locked access code.', 'code': 'invalid_code'}, status=400)
+
+        # If p was not supplied, match is the resolved PatientProfile
+        if p is None and isinstance(match, PatientProfile):
+            p = match
+        elif p is None:
+            return Response({'detail': 'Patient could not be resolved.', 'code': 'patient_not_found'}, status=404)
 
         access, _ = CareAccess.objects.get_or_create(doctor=doc, patient=p)
         access.grant(via=GrantedVia.ONE_TIME_CODE, days=365, scope=scope,
@@ -649,6 +667,12 @@ class CareAccessCodeRedeemView(APIView):
             'status': access.status,
             'scope': access.scope,
             'expires_at': access.expires_at.isoformat() if access.expires_at else None,
+            'patient': {
+                'id': p.id,
+                'name': p.user.get_full_name() or p.user.first_name or p.user.email,
+                'patient_code': p.patient_code,
+            },
+            'care_access_id': access.id,
         })
 
 

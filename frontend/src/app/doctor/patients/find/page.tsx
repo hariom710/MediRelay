@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, type Me } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,15 @@ export default function FindPatientPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
+  const [doctorVerified, setDoctorVerified] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api<Me>("/auth/me")
+      .then((m) => {
+        setDoctorVerified(m.verification_status === "verified");
+      })
+      .catch(() => {});
+  }, []);
 
   // Code redemption state
   const [codeModalOpen, setCodeModalOpen] = useState(false);
@@ -44,8 +53,8 @@ export default function FindPatientPage() {
       setSearched(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Search failed.");
-      setResults([]);
-      setSearched(true);
+      setResults(null);
+      setSearched(false);
     } finally {
       setLoading(false);
     }
@@ -122,6 +131,18 @@ export default function FindPatientPage() {
             </Button>
           </div>
         </div>
+
+        {/* Doctor Verification Notice */}
+        {doctorVerified === false && (
+          <div className="rounded-[var(--r-md)] border border-amber-500/30 bg-amber-50/80 p-4 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-200 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="font-bold">⚠️ Doctor License Verification Pending</span>
+            </div>
+            <p className="text-[11px] leading-relaxed">
+              Your doctor account is currently awaiting administrative license verification. Under clinical regulations, only verified doctors can search the universal patient registry, redeem codes, or prescribe medications. Please ask an administrator to verify your account or inspect the admin queue.
+            </p>
+          </div>
+        )}
 
         {/* DPDP Compliance Notice */}
         <div className="rounded-[var(--r-md)] border border-blue-500/20 bg-blue-50/50 p-4 text-xs text-blue-900 dark:bg-blue-950/20 dark:text-blue-200">

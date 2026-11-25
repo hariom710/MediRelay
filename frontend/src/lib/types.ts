@@ -69,13 +69,23 @@ export interface PatientAccessCode {
 export interface ClinicalSummary {
   allergies: string;
   chronic_conditions: string;
-  active_medications: {
+  active_medications?: {
     medicine_name: string;
     strength: string;
     dosage_form: string;
     instructions: string;
     prescribed_by: string;
-    valid_until: string | null;
+    valid_until?: string | null;
+    prescribed_date?: string | null;
+  }[];
+  current_medicines?: {
+    medicine_name: string;
+    strength: string;
+    dosage_form: string;
+    instructions: string;
+    prescribed_by: string;
+    valid_until?: string | null;
+    prescribed_date?: string | null;
   }[];
 }
 
@@ -230,6 +240,8 @@ export interface Notification {
 
 export interface PharmacyProfile {
   id: number;
+  name?: string;
+  email?: string;
   pharmacy_name: string;
   address: string;
   city: string;
@@ -237,20 +249,55 @@ export interface PharmacyProfile {
   phone: string;
   opening_hours: string;
   contact_person: string;
-  licence_number: string;
+  license_number?: string;
+  licence_number?: string;
   verification_status: string;
   verification_note: string;
   default_pickup_fee: string;
   default_validity_days: number;
+  created_at?: string;
 }
 
 export interface DoctorProfile {
   id: number;
+  name?: string;
+  email?: string;
+  phone?: string;
   qualification: string;
   registration_number: string;
   clinic_name: string;
   verification_status: string;
   verification_note: string;
+  created_at?: string;
+}
+
+export interface AuditLogEntry {
+  id: number;
+  user_id: number | null;
+  user_email: string;
+  user_name: string;
+  role: string;
+  action: string;
+  object_type: string;
+  object_id: string;
+  metadata: Record<string, unknown>;
+  ip_address: string;
+  prev_hash?: string;
+  entry_hash?: string;
+  created_at: string;
+}
+
+export interface AuditChainVerification {
+  valid: boolean;
+  tampered: boolean;
+  total_blocks: number;
+  genesis_hash: string;
+  latest_hash: string;
+  verified_at: string;
+  algorithm: string;
+  tampered_id: number | null;
+  failure_reason: string | null;
+  status: string;
 }
 
 export interface Request {

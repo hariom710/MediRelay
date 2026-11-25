@@ -212,7 +212,7 @@ export default function PatientPortal() {
                 {activeCode.code}
               </div>
               <p className="text-[11px] text-[var(--text-tertiary)]">
-                Valid for 10 minutes ({activeCode.scope.toUpperCase()} scope). Automatically grants doctor care access.
+                Valid for 10 minutes ({(activeCode.scope || "full").toUpperCase()} scope). Automatically grants doctor care access.
               </p>
             </div>
           )}

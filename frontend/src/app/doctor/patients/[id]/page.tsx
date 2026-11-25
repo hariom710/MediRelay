@@ -258,36 +258,41 @@ function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
             </div>
 
             {/* Active Medications */}
-            <Card className="p-0 overflow-hidden">
-              <div className="px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs font-bold text-[var(--text)]">
-                Active Medications
-              </div>
-              {loadingSummary ? (
-                <div className="p-6 text-xs text-[var(--text-tertiary)]">Loading active medications…</div>
-              ) : summary?.active_medications?.length === 0 ? (
-                <div className="p-8 text-center text-xs text-[var(--text-secondary)]">
-                  No currently active medications on file.
-                </div>
-              ) : (
-                <ul className="divide-y divide-[var(--border)]">
-                  {summary?.active_medications.map((m, idx) => (
-                    <li key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-[var(--text)]">{m.medicine_name}</span>
-                          <Badge variant="neutral" size="sm">{m.strength} {m.dosage_form}</Badge>
-                        </div>
-                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">{m.instructions}</p>
-                      </div>
-                      <div className="text-xs text-[var(--text-tertiary)] sm:text-right">
-                        <span>Prescribed by {m.prescribed_by}</span>
-                        {m.valid_until && <span className="block text-[11px]">Valid until: {m.valid_until}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+            {(() => {
+              const activeMeds = summary?.active_medications || summary?.current_medicines || [];
+              return (
+                <Card className="p-0 overflow-hidden">
+                  <div className="px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs font-bold text-[var(--text)]">
+                    Active Medications
+                  </div>
+                  {loadingSummary ? (
+                    <div className="p-6 text-xs text-[var(--text-tertiary)]">Loading active medications…</div>
+                  ) : activeMeds.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-[var(--text-secondary)]">
+                      No currently active medications on file.
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-[var(--border)]">
+                      {activeMeds.map((m, idx) => (
+                        <li key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-[var(--text)]">{m.medicine_name}</span>
+                              <Badge variant="neutral" size="sm">{m.strength} {m.dosage_form}</Badge>
+                            </div>
+                            <p className="text-xs text-[var(--text-secondary)] mt-0.5">{m.instructions}</p>
+                          </div>
+                          <div className="text-xs text-[var(--text-tertiary)] sm:text-right">
+                            <span>Prescribed by {m.prescribed_by}</span>
+                            {m.valid_until && <span className="block text-[11px]">Valid until: {m.valid_until}</span>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              );
+            })()}
           </div>
         )}
 

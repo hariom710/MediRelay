@@ -76,11 +76,13 @@ class ChangePasswordSerializer(serializers.Serializer):
 class DoctorProfileSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()
     email = serializers.EmailField(source='user.email', read_only=True)
+    phone = serializers.CharField(source='user.phone', read_only=True)
+    created_at = serializers.DateTimeField(source='user.date_joined', read_only=True)
 
     class Meta:
         model = DoctorProfile
-        fields = ['id', 'name', 'email', 'qualification', 'registration_number', 'clinic_name',
-                  'verification_status', 'verification_note']
+        fields = ['id', 'name', 'email', 'phone', 'qualification', 'registration_number', 'clinic_name',
+                  'verification_status', 'verification_note', 'created_at']
         read_only_fields = ['verification_status', 'verification_note']
 
     def get_name(self, obj):
@@ -96,11 +98,12 @@ class PatientProfileSerializer(serializers.ModelSerializer):
 class PharmacyProfileSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='pharmacy_name', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
+    created_at = serializers.DateTimeField(source='user.date_joined', read_only=True)
 
     class Meta:
         model = PharmacyProfile
         fields = ['id', 'name', 'email', 'pharmacy_name', 'license_number', 'address', 'city',
                   'pin_code', 'phone', 'opening_hours', 'contact_person',
                   'default_pickup_fee', 'default_validity_days',
-                  'verification_status', 'verification_note']
+                  'verification_status', 'verification_note', 'created_at']
         read_only_fields = ['verification_status', 'verification_note']
