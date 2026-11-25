@@ -427,6 +427,41 @@ class PatientTimelineView(APIView):
                 'date': f.created_at.isoformat(),
             })
 
+        # 4. Build unified chronological timeline list
+        timeline_events = []
+        for v in visit_rows:
+            timeline_events.append({
+                'type': 'visit',
+                'id': v['id'],
+                'date': v['visited_at'],
+                'doctor_name': v['doctor_name'],
+                'title': f"Clinical Visit: {v['complaint']}",
+                'description': f"Diagnosis: {v['diagnosis']}" + (f" | Notes: {v['private_notes']}" if v.get('private_notes') else ""),
+                'details': v,
+            })
+        for rx in rx_rows:
+            med_names = ", ".join([it['medicine_name'] for it in rx.get('items', [])]) or "No items listed"
+            timeline_events.append({
+                'type': 'prescription',
+                'id': rx['id'],
+                'date': rx['consultation_date'],
+                'doctor_name': rx['doctor_name'],
+                'title': f"Prescription #{rx['id']} (v{rx['version']})",
+                'description': f"Medicines: {med_names}",
+                'details': rx,
+            })
+        for pur in purchase_rows:
+            timeline_events.append({
+                'type': 'purchase',
+                'id': pur['fulfillment_id'],
+                'date': pur['date'],
+                'pharmacy_name': pur['pharmacy_name'],
+                'title': f"Pharmacy Dispensation - {pur['pharmacy_name']}",
+                'description': f"Order #{pur['order_id']} fulfilled. Status: {pur['status']}",
+                'details': pur,
+            })
+        timeline_events.sort(key=lambda x: str(x.get('date') or ''), reverse=True)
+
         record(request.user, 'patient.view_timeline', 'patient', p.id, {}, request)
 
         return Response({
@@ -435,6 +470,8 @@ class PatientTimelineView(APIView):
             'visits': visit_rows,
             'prescriptions': rx_rows,
             'purchases': purchase_rows,
+            'timeline': timeline_events,
+            'events': timeline_events,
         })
 
 
