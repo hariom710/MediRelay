@@ -69,7 +69,7 @@ def new_access_code(patient):
 
 
 def redeem_access_code(patient, code):
-    """Return True when the code is valid, unexpired, unused and under the attempt limit.
+    """Return patient (or True) when the code is valid, unexpired, unused and under the attempt limit.
 
     A bare hash of 6 digits is offline-brute-forceable, so codes are HMAC'd with
     SECRET_KEY and capped at 5 attempts per row.
@@ -79,16 +79,22 @@ def redeem_access_code(patient, code):
     if not re.fullmatch(r'\d{6}', code):
         return False
     now = timezone.now()
-    candidates = PatientAccessCode.objects.filter(
-        patient=patient, used_at__isnull=True, expires_at__gt=now,
-        attempts__lt=ACCESS_CODE_MAX_ATTEMPTS)
+    filters = {
+        'used_at__isnull': True,
+        'expires_at__gt': now,
+        'attempts__lt': ACCESS_CODE_MAX_ATTEMPTS,
+    }
+    if patient is not None:
+        filters['patient'] = patient
+
+    candidates = PatientAccessCode.objects.filter(**filters).select_related('patient__user')
     target = _pepper(code)
     for candidate in candidates:
         if hmac.compare_digest(candidate.code_hash, target):
             candidate.used_at = now
             candidate.save(update_fields=['used_at'])
-            return True
-    # Count the miss against every live code for this patient.
+            return candidate.patient if patient is None else True
+    # Count the miss against candidates
     from django.db.models import F
     candidates.update(attempts=F('attempts') + 1)
     return False

@@ -12,6 +12,8 @@ class _AppendOnlyQuerySet(models.QuerySet):
         # Allow Django's cascade collector to set user=None when a user is deleted (on_delete=SET_NULL)
         if set(kwargs.keys()).issubset({'user', 'user_id'}) and all(v is None for v in kwargs.values()):
             return super().update(**kwargs)
+        if set(kwargs.keys()).issubset({'prev_hash', 'entry_hash'}):
+            return super().update(**kwargs)
         raise PermissionError('AuditLog rows are immutable. update() is blocked.')
 
     def delete(self):
@@ -41,6 +43,8 @@ class AuditLog(models.Model):
     object_id = models.CharField(max_length=40)
     metadata = models.JSONField(default=dict, blank=True)
     ip_address = models.CharField(max_length=45, blank=True)
+    prev_hash = models.CharField(max_length=64, blank=True, default='')
+    entry_hash = models.CharField(max_length=64, blank=True, default='', db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     objects = AuditLogManager()

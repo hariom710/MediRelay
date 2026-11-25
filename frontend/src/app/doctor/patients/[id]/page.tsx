@@ -63,23 +63,69 @@ function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
       .finally(() => setLoadingSummary(false));
 
     // Load Prescriptions
-    api<Prescription[]>("/prescriptions")
-      .then((rxList) => setPrescriptions(rxList.filter((p) => p.patient === patientId)))
-      .catch(() => {});
+    api<any>("/prescriptions")
+      .then((res) => {
+        const rxList = Array.isArray(res) ? res : Array.isArray(res?.results) ? res.results : [];
+        setPrescriptions(rxList.filter((p: Prescription) => p.patient === patientId));
+      })
+      .catch(() => setPrescriptions([]));
 
     // Load Visits
-    api<ClinicalVisit[]>(`/patients/${id}/visits`)
-      .then(setVisits)
-      .catch(() => {});
+    api<any>(`/patients/${id}/visits`)
+      .then((res) => {
+        const vList = Array.isArray(res) ? res : Array.isArray(res?.results) ? res.results : [];
+        setVisits(vList);
+      })
+      .catch(() => setVisits([]));
   }, [id, patientId]);
+
+  // Helper to parse timeline payload
+  const parseTimelineResponse = (res: any): PatientTimelineEvent[] => {
+    if (Array.isArray(res)) return res;
+    if (res && Array.isArray(res.timeline)) return res.timeline;
+    if (res && Array.isArray(res.events)) return res.events;
+    if (res && (res.visits || res.prescriptions || res.purchases)) {
+      const vEvents: PatientTimelineEvent[] = (res.visits || []).map((v: any) => ({
+        type: "visit" as const,
+        id: v.id,
+        date: v.visited_at ? new Date(v.visited_at).toLocaleDateString() : "",
+        doctor_name: v.doctor_name,
+        title: `Clinical Visit: ${v.complaint || "Consultation"}`,
+        description: `Diagnosis: ${v.diagnosis || "N/A"}${v.private_notes ? ` • Note: ${v.private_notes}` : ""}`,
+        details: v,
+      }));
+      const rxEvents: PatientTimelineEvent[] = (res.prescriptions || []).map((rx: any) => ({
+        type: "prescription" as const,
+        id: rx.id,
+        date: rx.consultation_date ? new Date(rx.consultation_date).toLocaleDateString() : "",
+        doctor_name: rx.doctor_name,
+        title: `Prescription #${rx.id} (v${rx.version})`,
+        description: `Items: ${(rx.items || []).map((i: any) => i.medicine_name).join(", ") || "No items"}`,
+        details: rx,
+      }));
+      const pEvents: PatientTimelineEvent[] = (res.purchases || []).map((pur: any) => ({
+        type: "purchase" as const,
+        id: pur.fulfillment_id || pur.id,
+        date: pur.date ? new Date(pur.date).toLocaleDateString() : "",
+        pharmacy_name: pur.pharmacy_name,
+        title: `Pharmacy Dispensation - ${pur.pharmacy_name}`,
+        description: `Order #${pur.order_id} fulfilled. Status: ${pur.status}`,
+        details: pur,
+      }));
+      return [...vEvents, ...rxEvents, ...pEvents].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+    }
+    return [];
+  };
 
   // Lazy load timeline on tab switch
   useEffect(() => {
     if (activeTab === "timeline" && timeline === null && !loadingTimeline && !timelineScopeRestricted) {
       setLoadingTimeline(true);
-      api<PatientTimelineEvent[]>(`/patients/${id}/timeline`)
-        .then((events) => {
-          setTimeline(events);
+      api<any>(`/patients/${id}/timeline`)
+        .then((res) => {
+          setTimeline(parseTimelineResponse(res));
           setTimelineScopeRestricted(false);
         })
         .catch((err) => {
@@ -118,7 +164,7 @@ function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
       setVisitNotes("");
       // Refresh summary & timeline
       api<ClinicalSummary>(`/patients/${id}/summary`).then(setSummary).catch(() => {});
-      api<PatientTimelineEvent[]>(`/patients/${id}/timeline`).then(setTimeline).catch(() => {});
+      api<any>(`/patients/${id}/timeline`).then((res) => setTimeline(parseTimelineResponse(res))).catch(() => {});
     } catch (err: unknown) {
       setVisitError(err instanceof Error ? err.message : "Failed to record clinical visit.");
     } finally {
@@ -258,128 +304,136 @@ function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
             </div>
 
             {/* Active Medications */}
-            <Card className="p-0 overflow-hidden">
-              <div className="px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs font-bold text-[var(--text)]">
-                Active Medications
-              </div>
-              {loadingSummary ? (
-                <div className="p-6 text-xs text-[var(--text-tertiary)]">Loading active medications…</div>
-              ) : summary?.active_medications?.length === 0 ? (
-                <div className="p-8 text-center text-xs text-[var(--text-secondary)]">
-                  No currently active medications on file.
-                </div>
-              ) : (
-                <ul className="divide-y divide-[var(--border)]">
-                  {summary?.active_medications.map((m, idx) => (
-                    <li key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-[var(--text)]">{m.medicine_name}</span>
-                          <Badge variant="neutral" size="sm">{m.strength} {m.dosage_form}</Badge>
-                        </div>
-                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">{m.instructions}</p>
-                      </div>
-                      <div className="text-xs text-[var(--text-tertiary)] sm:text-right">
-                        <span>Prescribed by {m.prescribed_by}</span>
-                        {m.valid_until && <span className="block text-[11px]">Valid until: {m.valid_until}</span>}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Card>
+            {(() => {
+              const activeMeds = summary?.active_medications || summary?.current_medicines || [];
+              return (
+                <Card className="p-0 overflow-hidden">
+                  <div className="px-6 py-3.5 border-b border-[var(--border)] bg-[var(--bg-subtle)] text-xs font-bold text-[var(--text)]">
+                    Active Medications
+                  </div>
+                  {loadingSummary ? (
+                    <div className="p-6 text-xs text-[var(--text-tertiary)]">Loading active medications…</div>
+                  ) : activeMeds.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-[var(--text-secondary)]">
+                      No currently active medications on file.
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-[var(--border)]">
+                      {activeMeds.map((m, idx) => (
+                        <li key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-[var(--text)]">{m.medicine_name}</span>
+                              <Badge variant="neutral" size="sm">{m.strength} {m.dosage_form}</Badge>
+                            </div>
+                            <p className="text-xs text-[var(--text-secondary)] mt-0.5">{m.instructions}</p>
+                          </div>
+                          <div className="text-xs text-[var(--text-tertiary)] sm:text-right">
+                            <span>Prescribed by {m.prescribed_by}</span>
+                            {m.valid_until && <span className="block text-[11px]">Valid until: {m.valid_until}</span>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              );
+            })()}
           </div>
         )}
 
         {/* Tab 2: Cross-Doctor Timeline */}
-        {activeTab === "timeline" && (
-          <div className="space-y-4">
-            {timelineScopeRestricted ? (
-              <Card className="p-8 text-center space-y-3">
-                <Badge variant="warning">BASIC ACCESS LIMITED</Badge>
-                <h3 className="text-sm font-bold text-[var(--text)]">Full Clinical History Restricted</h3>
-                <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
-                  The patient has granted you Basic Scope access (demographics, allergies, and active medications only). Cross-doctor consultation history, past prescriptions, and pharmacy purchases require Full Scope consent.
-                </p>
-                <div className="pt-2">
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await api("/access/requests", {
-                          method: "POST",
-                          body: { patient_id: patientId, scope: "full" },
-                        });
-                        alert("Full access request sent to patient.");
-                      } catch {
-                        alert("Could not request full access.");
-                      }
-                    }}
-                  >
-                    Request Full Scope Access
-                  </Button>
-                </div>
-              </Card>
-            ) : loadingTimeline ? (
-              <div className="p-12 text-center text-xs text-[var(--text-tertiary)]">
-                Aggregating cross-doctor timeline…
-              </div>
-            ) : timeline?.length === 0 ? (
-              <Card className="p-8 text-center text-xs text-[var(--text-secondary)]">
-                No past consultations or orders found in timeline.
-              </Card>
-            ) : (
-              <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-[var(--border)]">
-                {timeline?.map((event, idx) => (
-                  <div key={idx} className="relative group">
-                    {/* Circle marker */}
-                    <div
-                      className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-[var(--bg-elevated)] ${
-                        event.type === "visit"
-                          ? "bg-blue-500"
-                          : event.type === "prescription"
-                          ? "bg-emerald-500"
-                          : "bg-purple-500"
-                      }`}
-                    />
-
-                    <Card className="p-4 space-y-1.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={
-                              event.type === "visit"
-                                ? "default"
-                                : event.type === "prescription"
-                                ? "success"
-                                : "neutral"
-                            }
-                            size="sm"
-                          >
-                            {event.type.toUpperCase()}
-                          </Badge>
-                          <span className="font-bold text-xs text-[var(--text)]">{event.title}</span>
-                        </div>
-                        <span className="text-[11px] text-[var(--text-tertiary)] font-mono">
-                          {event.date}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        {event.description}
-                      </p>
-
-                      <div className="text-[11px] text-[var(--text-tertiary)] pt-1 flex items-center gap-4">
-                        {event.doctor_name && <span>Doctor: {event.doctor_name}</span>}
-                        {event.pharmacy_name && <span>Pharmacy: {event.pharmacy_name}</span>}
-                      </div>
-                    </Card>
+        {activeTab === "timeline" && (() => {
+          const timelineEvents = Array.isArray(timeline) ? timeline : [];
+          return (
+            <div className="space-y-4">
+              {timelineScopeRestricted ? (
+                <Card className="p-8 text-center space-y-3">
+                  <Badge variant="warning">BASIC ACCESS LIMITED</Badge>
+                  <h3 className="text-sm font-bold text-[var(--text)]">Full Clinical History Restricted</h3>
+                  <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
+                    The patient has granted you Basic Scope access (demographics, allergies, and active medications only). Cross-doctor consultation history, past prescriptions, and pharmacy purchases require Full Scope consent.
+                  </p>
+                  <div className="pt-2">
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await api("/access/requests", {
+                            method: "POST",
+                            body: { patient_id: patientId, scope: "full" },
+                          });
+                          alert("Full access request sent to patient.");
+                        } catch {
+                          alert("Could not request full access.");
+                        }
+                      }}
+                    >
+                      Request Full Scope Access
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                </Card>
+              ) : loadingTimeline ? (
+                <div className="p-12 text-center text-xs text-[var(--text-tertiary)]">
+                  Aggregating cross-doctor timeline…
+                </div>
+              ) : timelineEvents.length === 0 ? (
+                <Card className="p-8 text-center text-xs text-[var(--text-secondary)]">
+                  No past consultations or orders found in timeline.
+                </Card>
+              ) : (
+                <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-[var(--border)]">
+                  {timelineEvents.map((event, idx) => (
+                    <div key={idx} className="relative group">
+                      {/* Circle marker */}
+                      <div
+                        className={`absolute -left-6 top-1 h-3.5 w-3.5 rounded-full border-2 border-[var(--bg-elevated)] ${
+                          event.type === "visit"
+                            ? "bg-blue-500"
+                            : event.type === "prescription"
+                            ? "bg-emerald-500"
+                            : "bg-purple-500"
+                        }`}
+                      />
+
+                      <Card className="p-4 space-y-1.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={
+                                event.type === "visit"
+                                  ? "default"
+                                  : event.type === "prescription"
+                                  ? "success"
+                                  : "neutral"
+                              }
+                              size="sm"
+                            >
+                              {event.type.toUpperCase()}
+                            </Badge>
+                            <span className="font-bold text-xs text-[var(--text)]">{event.title}</span>
+                          </div>
+                          <span className="text-[11px] text-[var(--text-tertiary)] font-mono">
+                            {event.date}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                          {event.description}
+                        </p>
+
+                        <div className="text-[11px] text-[var(--text-tertiary)] pt-1 flex items-center gap-4">
+                          {event.doctor_name && <span>Doctor: {event.doctor_name}</span>}
+                          {event.pharmacy_name && <span>Pharmacy: {event.pharmacy_name}</span>}
+                        </div>
+                      </Card>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Tab 3: Prescriptions */}
         {activeTab === "prescriptions" && (
@@ -393,7 +447,7 @@ function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
 
             {prescriptions === null ? (
               <div className="p-8 text-center text-xs text-[var(--text-tertiary)]">Loading prescriptions…</div>
-            ) : prescriptions.length === 0 ? (
+            ) : !Array.isArray(prescriptions) || prescriptions.length === 0 ? (
               <Card className="p-8 text-center text-xs text-[var(--text-secondary)]">
                 No prescriptions on file for this patient.
               </Card>
@@ -452,7 +506,7 @@ function PatientDetailInner({ params }: { params: Promise<{ id: string }> }) {
 
             {visits === null ? (
               <div className="p-8 text-center text-xs text-[var(--text-tertiary)]">Loading visits…</div>
-            ) : visits.length === 0 ? (
+            ) : !Array.isArray(visits) || visits.length === 0 ? (
               <Card className="p-8 text-center text-xs text-[var(--text-secondary)]">
                 No consultation visits recorded yet.
               </Card>

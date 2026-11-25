@@ -172,7 +172,7 @@ export default function PatientDoctorsAccessPage() {
                 {activeCode.code}
               </div>
               <p className="text-[11px] text-[var(--text-tertiary)]">
-                Valid for 10 minutes ({activeCode.scope.toUpperCase()} scope). The doctor will redeem it to access your record.
+                Valid for 10 minutes ({(activeCode.scope || "full").toUpperCase()} scope). The doctor will redeem it to access your record.
               </p>
             </div>
           )}
@@ -196,7 +196,7 @@ export default function PatientDoctorsAccessPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-sm text-[var(--text)]">{req.doctor_name}</span>
                       <Badge variant="warning" size="sm">
-                        REQUESTED {req.scope.toUpperCase()} SCOPE
+                        REQUESTED {(req.scope || "full").toUpperCase()} SCOPE
                       </Badge>
                     </div>
                     <p className="text-xs text-[var(--text-secondary)]">
@@ -255,7 +255,7 @@ export default function PatientDoctorsAccessPage() {
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-sm text-[var(--text)]">{doc.doctor_name}</span>
                         <Badge variant="success" size="sm">
-                          {doc.scope.toUpperCase()} SCOPE
+                          {(doc.scope || "full").toUpperCase()} SCOPE
                         </Badge>
                         <span className="text-[10px] text-[var(--text-tertiary)] uppercase">
                           Via {doc.granted_via}
